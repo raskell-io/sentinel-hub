@@ -1,0 +1,68 @@
+# Binaries
+bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+/hub
+/agent
+
+# Test binary
+*.test
+
+# Output of the go coverage tool
+*.out
+coverage.html
+
+# Dependency directories
+vendor/
+
+# Go workspace file
+go.work
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Database files
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Build artifacts
+dist/
+build/
+
+# Node modules (for web frontend)
+web/node_modules/
+web/dist/
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+tmp/
+temp/
+
+# Certificates (don't commit real certs)
+*.pem
+*.key
+*.crt
+!*_test.pem
+!*_test.key
+!*_test.crt
