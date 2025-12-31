@@ -53,12 +53,10 @@ func NewOrchestrator(s *store.Store, fs *hubgrpc.FleetService) *Orchestrator {
 func (o *Orchestrator) Start() error {
 	log.Info().Msg("Starting deployment orchestrator")
 
-	// Resume any in-progress deployments
-	o.wg.Add(1)
-	go func() {
-		defer o.wg.Done()
-		o.resumeDeployments()
-	}()
+	// Recover any orphaned deployments from previous run
+	if err := o.RecoverOrphanedDeployments(o.ctx); err != nil {
+		log.Error().Err(err).Msg("Failed to recover orphaned deployments")
+	}
 
 	// Start cleanup routine
 	o.wg.Add(1)
@@ -394,27 +392,84 @@ func (o *Orchestrator) failDeployment(ctx context.Context, dep *store.Deployment
 	}
 }
 
-// resumeDeployments resumes any in-progress deployments after restart.
-func (o *Orchestrator) resumeDeployments() {
-	ctx := o.ctx
+// RecoverOrphanedDeployments marks any orphaned deployments as failed.
+// This should be called on hub startup to handle deployments that were
+// interrupted by a hub restart.
+func (o *Orchestrator) RecoverOrphanedDeployments(ctx context.Context) error {
+	now := time.Now().UTC()
+	recoveredCount := 0
 
-	deps, err := o.store.ListDeployments(ctx, store.ListDeploymentsOptions{
-		Status: store.DeploymentStatusInProgress,
-	})
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to list in-progress deployments")
-		return
+	// Find deployments stuck in pending or in_progress state
+	for _, status := range []store.DeploymentStatus{
+		store.DeploymentStatusPending,
+		store.DeploymentStatusInProgress,
+	} {
+		deps, err := o.store.ListDeployments(ctx, store.ListDeploymentsOptions{
+			Status: status,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to list %s deployments: %w", status, err)
+		}
+
+		for i := range deps {
+			dep := deps[i]
+			log.Warn().
+				Str("deployment_id", dep.ID).
+				Str("previous_status", string(dep.Status)).
+				Msg("Recovering orphaned deployment")
+
+			// Mark deployment as failed
+			dep.Status = store.DeploymentStatusFailed
+			dep.CompletedAt = &now
+			if dep.Progress == nil {
+				dep.Progress = &store.DeploymentProgress{}
+			}
+			dep.Progress.FailureReason = "hub_restart: deployment interrupted by hub restart"
+
+			if err := o.store.UpdateDeployment(ctx, &dep); err != nil {
+				log.Error().Err(err).
+					Str("deployment_id", dep.ID).
+					Msg("Failed to update orphaned deployment")
+				continue
+			}
+
+			// Mark all pending/in-progress instances as failed
+			instances, err := o.store.ListDeploymentInstances(ctx, dep.ID)
+			if err != nil {
+				log.Error().Err(err).
+					Str("deployment_id", dep.ID).
+					Msg("Failed to list deployment instances")
+				continue
+			}
+
+			for _, di := range instances {
+				if di.Status == store.DeploymentInstanceStatusPending ||
+					di.Status == store.DeploymentInstanceStatusInProgress {
+					di.Status = store.DeploymentInstanceStatusFailed
+					di.CompletedAt = &now
+					errMsg := "hub_restart: deployment interrupted by hub restart"
+					di.ErrorMessage = &errMsg
+
+					if err := o.store.UpdateDeploymentInstance(ctx, di); err != nil {
+						log.Error().Err(err).
+							Str("deployment_id", dep.ID).
+							Str("instance_id", di.InstanceID).
+							Msg("Failed to update deployment instance")
+					}
+				}
+			}
+
+			recoveredCount++
+		}
 	}
 
-	for _, dep := range deps {
-		log.Info().Str("deployment_id", dep.ID).Msg("Resuming deployment")
-		depCopy := dep
-		o.wg.Add(1)
-		go func() {
-			defer o.wg.Done()
-			o.runDeployment(depCopy.ID)
-		}()
+	if recoveredCount > 0 {
+		log.Info().
+			Int("count", recoveredCount).
+			Msg("Recovered orphaned deployments")
 	}
+
+	return nil
 }
 
 // cleanupRoutine periodically cleans up old deployments.

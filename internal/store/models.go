@@ -97,11 +97,12 @@ const (
 
 // DeploymentProgress tracks the progress of a deployment.
 type DeploymentProgress struct {
-	TotalInstances     int `json:"total_instances"`
-	CompletedInstances int `json:"completed_instances"`
-	FailedInstances    int `json:"failed_instances"`
-	CurrentBatch       int `json:"current_batch"`
-	TotalBatches       int `json:"total_batches"`
+	TotalInstances     int    `json:"total_instances"`
+	CompletedInstances int    `json:"completed_instances"`
+	FailedInstances    int    `json:"failed_instances"`
+	CurrentBatch       int    `json:"current_batch"`
+	TotalBatches       int    `json:"total_batches"`
+	FailureReason      string `json:"failure_reason,omitempty"`
 }
 
 // DeploymentInstance tracks per-instance deployment status.

@@ -636,3 +636,236 @@ func TestOrchestrator_CreateDeployment_StoredInDatabase(t *testing.T) {
 		t.Errorf("stored TargetInstances count = %d, want 1", len(stored.TargetInstances))
 	}
 }
+
+func TestOrchestrator_RecoverOrphanedDeployments_InProgress(t *testing.T) {
+	s := setupTestStore(t)
+	ctx := context.Background()
+
+	// Create a deployment that's stuck in "in_progress"
+	cfg, _ := createTestConfig(t, s, "test-config", "content")
+	inst := createTestInstance(t, s, "test-instance", nil)
+
+	dep := &store.Deployment{
+		ConfigID:        cfg.ID,
+		ConfigVersion:   1,
+		TargetInstances: []string{inst.ID},
+		Status:          store.DeploymentStatusInProgress,
+		Strategy:        store.DeploymentStrategyAllAtOnce,
+	}
+	if err := s.CreateDeployment(ctx, dep); err != nil {
+		t.Fatalf("CreateDeployment failed: %v", err)
+	}
+
+	// Create a deployment instance that's in progress
+	di := &store.DeploymentInstance{
+		DeploymentID: dep.ID,
+		InstanceID:   inst.ID,
+		Status:       store.DeploymentInstanceStatusInProgress,
+	}
+	if err := s.CreateDeploymentInstance(ctx, di); err != nil {
+		t.Fatalf("CreateDeploymentInstance failed: %v", err)
+	}
+
+	// Create orchestrator and run recovery
+	o := NewOrchestrator(s, nil)
+	if err := o.RecoverOrphanedDeployments(ctx); err != nil {
+		t.Fatalf("RecoverOrphanedDeployments failed: %v", err)
+	}
+
+	// Verify deployment was marked as failed
+	recovered, err := s.GetDeployment(ctx, dep.ID)
+	if err != nil {
+		t.Fatalf("GetDeployment failed: %v", err)
+	}
+	if recovered.Status != store.DeploymentStatusFailed {
+		t.Errorf("Status = %q, want %q", recovered.Status, store.DeploymentStatusFailed)
+	}
+	if recovered.CompletedAt == nil {
+		t.Error("CompletedAt should be set")
+	}
+	if recovered.Progress == nil || recovered.Progress.FailureReason == "" {
+		t.Error("FailureReason should be set")
+	}
+
+	// Verify instance was marked as failed
+	recoveredInst, err := s.GetDeploymentInstance(ctx, dep.ID, inst.ID)
+	if err != nil {
+		t.Fatalf("GetDeploymentInstance failed: %v", err)
+	}
+	if recoveredInst.Status != store.DeploymentInstanceStatusFailed {
+		t.Errorf("Instance Status = %q, want %q", recoveredInst.Status, store.DeploymentInstanceStatusFailed)
+	}
+	if recoveredInst.ErrorMessage == nil || *recoveredInst.ErrorMessage == "" {
+		t.Error("Instance ErrorMessage should be set")
+	}
+}
+
+func TestOrchestrator_RecoverOrphanedDeployments_Pending(t *testing.T) {
+	s := setupTestStore(t)
+	ctx := context.Background()
+
+	// Create a deployment that's stuck in "pending"
+	cfg, _ := createTestConfig(t, s, "test-config", "content")
+	inst := createTestInstance(t, s, "test-instance", nil)
+
+	dep := &store.Deployment{
+		ConfigID:        cfg.ID,
+		ConfigVersion:   1,
+		TargetInstances: []string{inst.ID},
+		Status:          store.DeploymentStatusPending,
+		Strategy:        store.DeploymentStrategyAllAtOnce,
+	}
+	if err := s.CreateDeployment(ctx, dep); err != nil {
+		t.Fatalf("CreateDeployment failed: %v", err)
+	}
+
+	// Create orchestrator and run recovery
+	o := NewOrchestrator(s, nil)
+	if err := o.RecoverOrphanedDeployments(ctx); err != nil {
+		t.Fatalf("RecoverOrphanedDeployments failed: %v", err)
+	}
+
+	// Verify deployment was marked as failed
+	recovered, err := s.GetDeployment(ctx, dep.ID)
+	if err != nil {
+		t.Fatalf("GetDeployment failed: %v", err)
+	}
+	if recovered.Status != store.DeploymentStatusFailed {
+		t.Errorf("Status = %q, want %q", recovered.Status, store.DeploymentStatusFailed)
+	}
+}
+
+func TestOrchestrator_RecoverOrphanedDeployments_CompletedNotAffected(t *testing.T) {
+	s := setupTestStore(t)
+	ctx := context.Background()
+
+	// Create a deployment that's already completed
+	cfg, _ := createTestConfig(t, s, "test-config", "content")
+	inst := createTestInstance(t, s, "test-instance", nil)
+	now := time.Now().UTC()
+
+	dep := &store.Deployment{
+		ConfigID:        cfg.ID,
+		ConfigVersion:   1,
+		TargetInstances: []string{inst.ID},
+		Status:          store.DeploymentStatusCompleted,
+		Strategy:        store.DeploymentStrategyAllAtOnce,
+		CompletedAt:     &now,
+	}
+	if err := s.CreateDeployment(ctx, dep); err != nil {
+		t.Fatalf("CreateDeployment failed: %v", err)
+	}
+
+	// Create orchestrator and run recovery
+	o := NewOrchestrator(s, nil)
+	if err := o.RecoverOrphanedDeployments(ctx); err != nil {
+		t.Fatalf("RecoverOrphanedDeployments failed: %v", err)
+	}
+
+	// Verify deployment was NOT changed
+	recovered, err := s.GetDeployment(ctx, dep.ID)
+	if err != nil {
+		t.Fatalf("GetDeployment failed: %v", err)
+	}
+	if recovered.Status != store.DeploymentStatusCompleted {
+		t.Errorf("Status = %q, want %q (should not be changed)", recovered.Status, store.DeploymentStatusCompleted)
+	}
+}
+
+func TestOrchestrator_RecoverOrphanedDeployments_MultipleDeployments(t *testing.T) {
+	s := setupTestStore(t)
+	ctx := context.Background()
+
+	cfg, _ := createTestConfig(t, s, "test-config", "content")
+
+	// Create multiple orphaned deployments
+	for i := 0; i < 3; i++ {
+		inst := createTestInstance(t, s, "inst-"+string(rune('a'+i)), nil)
+		status := store.DeploymentStatusInProgress
+		if i == 0 {
+			status = store.DeploymentStatusPending
+		}
+		dep := &store.Deployment{
+			ConfigID:        cfg.ID,
+			ConfigVersion:   1,
+			TargetInstances: []string{inst.ID},
+			Status:          status,
+			Strategy:        store.DeploymentStrategyAllAtOnce,
+		}
+		if err := s.CreateDeployment(ctx, dep); err != nil {
+			t.Fatalf("CreateDeployment failed: %v", err)
+		}
+	}
+
+	// Create orchestrator and run recovery
+	o := NewOrchestrator(s, nil)
+	if err := o.RecoverOrphanedDeployments(ctx); err != nil {
+		t.Fatalf("RecoverOrphanedDeployments failed: %v", err)
+	}
+
+	// Verify all deployments were marked as failed
+	deps, err := s.ListDeployments(ctx, store.ListDeploymentsOptions{Status: store.DeploymentStatusFailed})
+	if err != nil {
+		t.Fatalf("ListDeployments failed: %v", err)
+	}
+	if len(deps) != 3 {
+		t.Errorf("Failed deployment count = %d, want 3", len(deps))
+	}
+}
+
+func TestOrchestrator_RecoverOrphanedDeployments_PreservesCompletedInstances(t *testing.T) {
+	s := setupTestStore(t)
+	ctx := context.Background()
+
+	cfg, _ := createTestConfig(t, s, "test-config", "content")
+	inst1 := createTestInstance(t, s, "inst-1", nil)
+	inst2 := createTestInstance(t, s, "inst-2", nil)
+	now := time.Now().UTC()
+
+	// Create a deployment in progress
+	dep := &store.Deployment{
+		ConfigID:        cfg.ID,
+		ConfigVersion:   1,
+		TargetInstances: []string{inst1.ID, inst2.ID},
+		Status:          store.DeploymentStatusInProgress,
+		Strategy:        store.DeploymentStrategyRolling,
+	}
+	if err := s.CreateDeployment(ctx, dep); err != nil {
+		t.Fatalf("CreateDeployment failed: %v", err)
+	}
+
+	// First instance completed successfully
+	di1 := &store.DeploymentInstance{
+		DeploymentID: dep.ID,
+		InstanceID:   inst1.ID,
+		Status:       store.DeploymentInstanceStatusCompleted,
+		CompletedAt:  &now,
+	}
+	s.CreateDeploymentInstance(ctx, di1)
+
+	// Second instance was in progress when hub restarted
+	di2 := &store.DeploymentInstance{
+		DeploymentID: dep.ID,
+		InstanceID:   inst2.ID,
+		Status:       store.DeploymentInstanceStatusInProgress,
+	}
+	s.CreateDeploymentInstance(ctx, di2)
+
+	// Run recovery
+	o := NewOrchestrator(s, nil)
+	if err := o.RecoverOrphanedDeployments(ctx); err != nil {
+		t.Fatalf("RecoverOrphanedDeployments failed: %v", err)
+	}
+
+	// Verify first instance status was preserved
+	recovered1, _ := s.GetDeploymentInstance(ctx, dep.ID, inst1.ID)
+	if recovered1.Status != store.DeploymentInstanceStatusCompleted {
+		t.Errorf("Instance 1 Status = %q, want %q (should be preserved)", recovered1.Status, store.DeploymentInstanceStatusCompleted)
+	}
+
+	// Verify second instance was marked as failed
+	recovered2, _ := s.GetDeploymentInstance(ctx, dep.ID, inst2.ID)
+	if recovered2.Status != store.DeploymentInstanceStatusFailed {
+		t.Errorf("Instance 2 Status = %q, want %q", recovered2.Status, store.DeploymentInstanceStatusFailed)
+	}
+}
