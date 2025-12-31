@@ -392,3 +392,157 @@ export interface CreateDeploymentInput {
   targetLabels?: Record<string, string>;
   strategy?: "all-at-once" | "rolling" | "canary";
 }
+
+// Metrics
+export interface MetricsSummary {
+  totalRequests: number;
+  totalErrors: number;
+  errorRate: number;
+  avgLatencyMs: number;
+  p50LatencyMs: number;
+  p95LatencyMs: number;
+  p99LatencyMs: number;
+  requestsPerSecond: number;
+  activeConnections: number;
+  bytesIn: number;
+  bytesOut: number;
+  periodStart: string;
+  periodEnd: string;
+}
+
+export interface TimeSeriesPoint {
+  timestamp: string;
+  value: number;
+}
+
+export interface TimeSeriesData {
+  metric: string;
+  points: TimeSeriesPoint[];
+}
+
+export interface FleetMetrics {
+  summary: MetricsSummary;
+  timeSeries: {
+    requests: TimeSeriesPoint[];
+    errors: TimeSeriesPoint[];
+    latencyP50: TimeSeriesPoint[];
+    latencyP95: TimeSeriesPoint[];
+    latencyP99: TimeSeriesPoint[];
+  };
+  byInstance: Record<string, MetricsSummary>;
+}
+
+export interface InstanceMetrics {
+  instanceId: string;
+  summary: MetricsSummary;
+  timeSeries: {
+    requests: TimeSeriesPoint[];
+    errors: TimeSeriesPoint[];
+    latencyP50: TimeSeriesPoint[];
+    latencyP95: TimeSeriesPoint[];
+    latencyP99: TimeSeriesPoint[];
+  };
+  upstreams: UpstreamMetrics[];
+}
+
+export interface UpstreamMetrics {
+  name: string;
+  healthy: boolean;
+  totalRequests: number;
+  totalErrors: number;
+  avgLatencyMs: number;
+  activeConnections: number;
+}
+
+export async function getFleetMetrics(params?: {
+  period?: "1h" | "6h" | "24h" | "7d";
+}): Promise<FleetMetrics> {
+  const searchParams = new URLSearchParams();
+  if (params?.period) searchParams.set("period", params.period);
+
+  const response = await fetch(`${API_BASE}/metrics/fleet?${searchParams}`, {
+    headers: getAuthHeaders(),
+  });
+  return handleResponse<FleetMetrics>(response);
+}
+
+export async function getInstanceMetrics(
+  instanceId: string,
+  params?: { period?: "1h" | "6h" | "24h" | "7d" }
+): Promise<InstanceMetrics> {
+  const searchParams = new URLSearchParams();
+  if (params?.period) searchParams.set("period", params.period);
+
+  const response = await fetch(
+    `${API_BASE}/instances/${instanceId}/metrics?${searchParams}`,
+    { headers: getAuthHeaders() }
+  );
+  return handleResponse<InstanceMetrics>(response);
+}
+
+// Alerts
+export interface Alert {
+  id: string;
+  name: string;
+  description?: string;
+  severity: "critical" | "warning" | "info";
+  condition: string;
+  threshold: number;
+  enabled: boolean;
+  state: "ok" | "firing" | "pending";
+  lastTriggeredAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AlertRule {
+  name: string;
+  description?: string;
+  severity: "critical" | "warning" | "info";
+  metric: string;
+  operator: "gt" | "lt" | "gte" | "lte" | "eq";
+  threshold: number;
+  duration: string;
+  enabled: boolean;
+  notificationChannels?: string[];
+}
+
+export async function listAlerts(): Promise<{ alerts: Alert[] }> {
+  const response = await fetch(`${API_BASE}/alerts`, {
+    headers: getAuthHeaders(),
+  });
+  return handleResponse<{ alerts: Alert[] }>(response);
+}
+
+export async function createAlert(data: AlertRule): Promise<Alert> {
+  const response = await fetch(`${API_BASE}/alerts`, {
+    method: "POST",
+    headers: getAuthHeaders(),
+    body: JSON.stringify(data),
+  });
+  return handleResponse<Alert>(response);
+}
+
+export async function updateAlert(id: string, data: Partial<AlertRule>): Promise<Alert> {
+  const response = await fetch(`${API_BASE}/alerts/${id}`, {
+    method: "PUT",
+    headers: getAuthHeaders(),
+    body: JSON.stringify(data),
+  });
+  return handleResponse<Alert>(response);
+}
+
+export async function deleteAlert(id: string): Promise<void> {
+  const response = await fetch(`${API_BASE}/alerts/${id}`, {
+    method: "DELETE",
+    headers: getAuthHeaders(),
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new ApiError(
+      response.status,
+      error.error?.code || "UNKNOWN_ERROR",
+      error.error?.message || response.statusText
+    );
+  }
+}

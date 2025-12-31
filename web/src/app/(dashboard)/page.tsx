@@ -1,8 +1,17 @@
 "use client";
 
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
-import { Server, FileCode2, Rocket, Activity, ArrowRight } from "lucide-react";
+import {
+  Server,
+  FileCode2,
+  Rocket,
+  Activity,
+  ArrowRight,
+  AlertTriangle,
+  RefreshCw,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -14,10 +23,24 @@ import {
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusBadge } from "@/components/instances/status-badge";
-import { listInstances, listConfigs, listDeployments, Instance } from "@/lib/api";
+import { DeploymentStatusBadge } from "@/components/deployments/deployment-status-badge";
+import { MetricsSummaryCards } from "@/components/metrics/metrics-summary";
+import { MetricsChart, MultiLineChart } from "@/components/metrics/metrics-chart";
+import { PeriodSelector, Period } from "@/components/metrics/period-selector";
+import {
+  listInstances,
+  listConfigs,
+  listDeployments,
+  getFleetMetrics,
+  listAlerts,
+  Instance,
+  TimeSeriesPoint,
+} from "@/lib/api";
 import { formatDistanceToNow } from "date-fns";
 
 export default function DashboardPage() {
+  const [period, setPeriod] = useState<Period>("1h");
+
   const { data: instancesData, isLoading: instancesLoading } = useQuery({
     queryKey: ["instances"],
     queryFn: listInstances,
@@ -33,21 +56,170 @@ export default function DashboardPage() {
     queryFn: listDeployments,
   });
 
+  const {
+    data: metricsData,
+    isLoading: metricsLoading,
+    refetch: refetchMetrics,
+    isFetching: metricsFetching,
+  } = useQuery({
+    queryKey: ["fleet-metrics", period],
+    queryFn: () => getFleetMetrics({ period }),
+    refetchInterval: 30000, // Refresh every 30 seconds
+  });
+
+  const { data: alertsData } = useQuery({
+    queryKey: ["alerts"],
+    queryFn: listAlerts,
+  });
+
   const instances = instancesData?.instances ?? [];
   const configs = configsData?.configs ?? [];
   const deployments = deploymentsData?.deployments ?? [];
+  const alerts = alertsData?.alerts ?? [];
 
   const onlineInstances = instances.filter((i) => i.status === "online").length;
   const recentDeployments = deployments.slice(0, 5);
+  const firingAlerts = alerts.filter((a) => a.state === "firing");
+
+  // Combine latency time series for multi-line chart
+  const latencyData = metricsData
+    ? combineTimeSeries({
+        p50: metricsData.timeSeries.latencyP50,
+        p95: metricsData.timeSeries.latencyP95,
+        p99: metricsData.timeSeries.latencyP99,
+      })
+    : [];
 
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
-        <p className="text-muted-foreground">
-          Fleet overview and recent activity
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
+          <p className="text-muted-foreground">
+            Fleet overview and performance metrics
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <PeriodSelector value={period} onChange={setPeriod} />
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => refetchMetrics()}
+            disabled={metricsFetching}
+          >
+            <RefreshCw
+              className={`h-4 w-4 ${metricsFetching ? "animate-spin" : ""}`}
+            />
+          </Button>
+        </div>
+      </div>
+
+      {/* Alerts Banner */}
+      {firingAlerts.length > 0 && (
+        <div className="rounded-lg border border-red-500 bg-red-500/10 p-4">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="h-5 w-5 text-red-500" />
+            <span className="font-medium text-red-500">
+              {firingAlerts.length} active alert{firingAlerts.length > 1 ? "s" : ""}
+            </span>
+          </div>
+          <div className="mt-2 space-y-1">
+            {firingAlerts.slice(0, 3).map((alert) => (
+              <p key={alert.id} className="text-sm text-red-500/80">
+                {alert.name}: {alert.description}
+              </p>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Metrics Summary */}
+      {metricsLoading ? (
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          {[...Array(4)].map((_, i) => (
+            <Skeleton key={i} className="h-28" />
+          ))}
+        </div>
+      ) : metricsData ? (
+        <MetricsSummaryCards data={metricsData.summary} />
+      ) : (
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          <MetricsPlaceholderCard title="Requests/sec" />
+          <MetricsPlaceholderCard title="Error Rate" />
+          <MetricsPlaceholderCard title="P95 Latency" />
+          <MetricsPlaceholderCard title="Throughput" />
+        </div>
+      )}
+
+      {/* Charts Grid */}
+      <div className="grid gap-6 md:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Request Rate</CardTitle>
+            <CardDescription>Requests per second over time</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {metricsLoading ? (
+              <Skeleton className="h-[200px]" />
+            ) : metricsData ? (
+              <MetricsChart
+                data={metricsData.timeSeries.requests}
+                color="hsl(var(--primary))"
+                formatValue={(v) => `${v.toFixed(0)}/s`}
+                height={200}
+              />
+            ) : (
+              <ChartPlaceholder />
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Error Rate</CardTitle>
+            <CardDescription>Errors per second over time</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {metricsLoading ? (
+              <Skeleton className="h-[200px]" />
+            ) : metricsData ? (
+              <MetricsChart
+                data={metricsData.timeSeries.errors}
+                color="hsl(var(--destructive))"
+                formatValue={(v) => `${v.toFixed(0)}/s`}
+                height={200}
+              />
+            ) : (
+              <ChartPlaceholder />
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="md:col-span-2">
+          <CardHeader>
+            <CardTitle className="text-base">Latency Percentiles</CardTitle>
+            <CardDescription>P50, P95, and P99 response times</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {metricsLoading ? (
+              <Skeleton className="h-[250px]" />
+            ) : metricsData ? (
+              <MultiLineChart
+                data={latencyData}
+                lines={[
+                  { dataKey: "p50", color: "hsl(142, 76%, 36%)", name: "P50" },
+                  { dataKey: "p95", color: "hsl(48, 96%, 53%)", name: "P95" },
+                  { dataKey: "p99", color: "hsl(0, 84%, 60%)", name: "P99" },
+                ]}
+                formatValue={(v) => `${v.toFixed(0)}ms`}
+                height={250}
+              />
+            ) : (
+              <ChartPlaceholder height={250} />
+            )}
+          </CardContent>
+        </Card>
       </div>
 
       {/* Stats Grid */}
@@ -172,33 +344,6 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
       </div>
-
-      {/* Quick Actions */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Quick Actions</CardTitle>
-          <CardDescription>Common tasks and workflows</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="grid gap-4 md:grid-cols-3">
-            <QuickAction
-              title="View Instances"
-              description="Monitor your fleet status"
-              href="/instances"
-            />
-            <QuickAction
-              title="Configurations"
-              description="Manage proxy configurations"
-              href="/configs"
-            />
-            <QuickAction
-              title="Deploy"
-              description="Roll out configuration changes"
-              href="/deployments"
-            />
-          </div>
-        </CardContent>
-      </Card>
     </div>
   );
 }
@@ -254,44 +399,45 @@ function InstanceRow({ instance }: { instance: Instance }) {
   );
 }
 
-function QuickAction({
-  title,
-  description,
-  href,
-}: {
-  title: string;
-  description: string;
-  href: string;
-}) {
+function MetricsPlaceholderCard({ title }: { title: string }) {
   return (
-    <Link
-      href={href}
-      className="block p-4 rounded-lg border hover:border-primary/50 hover:bg-accent/50 transition-colors"
-    >
-      <h3 className="font-medium mb-1">{title}</h3>
-      <p className="text-sm text-muted-foreground">{description}</p>
-    </Link>
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+        <CardTitle className="text-sm font-medium">{title}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="text-2xl font-bold text-muted-foreground">--</div>
+        <p className="text-xs text-muted-foreground">No data available</p>
+      </CardContent>
+    </Card>
   );
 }
 
-function DeploymentStatusBadge({
-  status,
-}: {
-  status: "pending" | "in-progress" | "completed" | "failed" | "cancelled";
-}) {
-  const variants = {
-    pending: "bg-gray-500/10 text-gray-700 border-gray-500",
-    "in-progress": "bg-blue-500/10 text-blue-700 border-blue-500",
-    completed: "bg-green-500/10 text-green-700 border-green-500",
-    failed: "bg-red-500/10 text-red-700 border-red-500",
-    cancelled: "bg-yellow-500/10 text-yellow-700 border-yellow-500",
-  };
-
+function ChartPlaceholder({ height = 200 }: { height?: number }) {
   return (
-    <span
-      className={`inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium ${variants[status]}`}
+    <div
+      className="flex items-center justify-center rounded-lg border border-dashed"
+      style={{ height }}
     >
-      {status}
-    </span>
+      <p className="text-sm text-muted-foreground">No metrics data available</p>
+    </div>
   );
+}
+
+function combineTimeSeries(
+  series: Record<string, TimeSeriesPoint[]>
+): Array<Record<string, string | number>> {
+  const keys = Object.keys(series);
+  if (keys.length === 0) return [];
+
+  const firstSeries = series[keys[0]];
+  return firstSeries.map((point, index) => {
+    const combined: Record<string, string | number> = {
+      timestamp: point.timestamp,
+    };
+    keys.forEach((key) => {
+      combined[key] = series[key][index]?.value ?? 0;
+    });
+    return combined;
+  });
 }
