@@ -1,0 +1,53 @@
+version: "3.8"
+
+services:
+  # Hub API Server
+  hub:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"   # REST API
+      - "9090:9090"   # gRPC API
+    environment:
+      - HUB_PORT=8080
+      - HUB_GRPC_PORT=9090
+      - HUB_DATABASE_URL=sqlite:///data/hub.db
+      - HUB_JWT_SECRET=${HUB_JWT_SECRET:-development-secret-change-in-production}
+      - HUB_LOG_LEVEL=info
+      - HUB_ADMIN_EMAIL=${HUB_ADMIN_EMAIL:-admin@example.com}
+      - HUB_ADMIN_PASSWORD=${HUB_ADMIN_PASSWORD:-Admin1234}
+    volumes:
+      - hub-data:/data
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/api/v1/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    restart: unless-stopped
+
+  # Web UI
+  web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - NEXT_PUBLIC_API_URL=http://hub:8080
+    depends_on:
+      hub:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+volumes:
+  hub-data:
+    driver: local

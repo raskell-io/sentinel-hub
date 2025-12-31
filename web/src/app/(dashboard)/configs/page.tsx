@@ -51,7 +51,7 @@ export default function ConfigsPage() {
 
   const { data, isLoading, refetch, isFetching } = useQuery({
     queryKey: ["configs"],
-    queryFn: listConfigs,
+    queryFn: () => listConfigs(),
   });
 
   const deleteMutation = useMutation({

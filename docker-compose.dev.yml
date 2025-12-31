@@ -1,0 +1,74 @@
+version: "3.8"
+
+# Development configuration with hot reload
+# Usage: docker-compose -f docker-compose.dev.yml up
+
+services:
+  # Hub API Server (development mode)
+  hub:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    ports:
+      - "8080:8080"   # REST API
+      - "9090:9090"   # gRPC API
+    environment:
+      - HUB_PORT=8080
+      - HUB_GRPC_PORT=9090
+      - HUB_DATABASE_URL=sqlite:///data/hub.db
+      - HUB_JWT_SECRET=development-secret
+      - HUB_LOG_LEVEL=debug
+      - HUB_ADMIN_EMAIL=admin@example.com
+      - HUB_ADMIN_PASSWORD=Admin1234
+    volumes:
+      - .:/app
+      - hub-data:/data
+      - go-mod-cache:/go/pkg/mod
+    working_dir: /app
+    command: ["go", "run", "./cmd/hub", "serve"]
+    restart: unless-stopped
+
+  # Web UI (development mode with hot reload)
+  web:
+    image: node:22-alpine
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - NEXT_TELEMETRY_DISABLED=1
+    volumes:
+      - ./web:/app
+      - web-node-modules:/app/node_modules
+    working_dir: /app
+    command: sh -c "npm install && npm run dev"
+    depends_on:
+      - hub
+    restart: unless-stopped
+
+  # PostgreSQL (for production-like testing)
+  postgres:
+    image: postgres:16-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=sentinel
+      - POSTGRES_PASSWORD=sentinel
+      - POSTGRES_DB=sentinel_hub
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sentinel -d sentinel_hub"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  hub-data:
+    driver: local
+  go-mod-cache:
+    driver: local
+  web-node-modules:
+    driver: local
+  postgres-data:
+    driver: local

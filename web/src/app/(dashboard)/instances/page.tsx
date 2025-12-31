@@ -32,7 +32,7 @@ export default function InstancesPage() {
 
   const { data, isLoading, refetch, isFetching } = useQuery({
     queryKey: ["instances"],
-    queryFn: listInstances,
+    queryFn: () => listInstances(),
   });
 
   const instances = data?.instances ?? [];

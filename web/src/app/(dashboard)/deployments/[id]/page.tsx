@@ -74,7 +74,7 @@ export default function DeploymentDetailPage({ params }: PageProps) {
 
   const { data: instancesData } = useQuery({
     queryKey: ["instances"],
-    queryFn: listInstances,
+    queryFn: () => listInstances(),
   });
 
   const cancelMutation = useMutation({

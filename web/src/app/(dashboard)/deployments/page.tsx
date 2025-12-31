@@ -35,13 +35,13 @@ export default function DeploymentsPage() {
 
   const { data: deploymentsData, isLoading, refetch, isFetching } = useQuery({
     queryKey: ["deployments"],
-    queryFn: listDeployments,
+    queryFn: () => listDeployments(),
     refetchInterval: 5000, // Poll for updates every 5 seconds
   });
 
   const { data: configsData } = useQuery({
     queryKey: ["configs"],
-    queryFn: listConfigs,
+    queryFn: () => listConfigs(),
   });
 
   const deployments = deploymentsData?.deployments ?? [];

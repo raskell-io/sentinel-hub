@@ -60,13 +60,13 @@ export function CreateDeploymentDialog({
 
   const { data: configsData } = useQuery({
     queryKey: ["configs"],
-    queryFn: listConfigs,
+    queryFn: () => listConfigs(),
     enabled: open,
   });
 
   const { data: instancesData } = useQuery({
     queryKey: ["instances"],
-    queryFn: listInstances,
+    queryFn: () => listInstances(),
     enabled: open,
   });
 

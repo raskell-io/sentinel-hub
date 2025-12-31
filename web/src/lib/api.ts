@@ -161,12 +161,30 @@ export async function deleteUser(id: string) {
   }
 }
 
+// Pagination types
+export interface PaginationParams {
+  page?: number;
+  limit?: number;
+}
+
+export interface PaginatedResponse<T> {
+  items: T[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
+
 // Instances
-export async function listInstances() {
-  const response = await fetch(`${API_BASE}/instances`, {
+export async function listInstances(params?: PaginationParams) {
+  const searchParams = new URLSearchParams();
+  if (params?.page) searchParams.set("page", params.page.toString());
+  if (params?.limit) searchParams.set("limit", params.limit.toString());
+
+  const response = await fetch(`${API_BASE}/instances?${searchParams}`, {
     headers: getAuthHeaders(),
   });
-  return handleResponse<{ instances: Instance[] }>(response);
+  return handleResponse<{ instances: Instance[]; total?: number }>(response);
 }
 
 export async function getInstance(id: string) {
@@ -177,11 +195,15 @@ export async function getInstance(id: string) {
 }
 
 // Configurations
-export async function listConfigs() {
-  const response = await fetch(`${API_BASE}/configs`, {
+export async function listConfigs(params?: PaginationParams) {
+  const searchParams = new URLSearchParams();
+  if (params?.page) searchParams.set("page", params.page.toString());
+  if (params?.limit) searchParams.set("limit", params.limit.toString());
+
+  const response = await fetch(`${API_BASE}/configs?${searchParams}`, {
     headers: getAuthHeaders(),
   });
-  return handleResponse<{ configs: Config[] }>(response);
+  return handleResponse<{ configs: Config[]; total?: number }>(response);
 }
 
 export async function getConfig(id: string) {
@@ -257,11 +279,15 @@ export async function validateConfig(content: string) {
 }
 
 // Deployments
-export async function listDeployments() {
-  const response = await fetch(`${API_BASE}/deployments`, {
+export async function listDeployments(params?: PaginationParams) {
+  const searchParams = new URLSearchParams();
+  if (params?.page) searchParams.set("page", params.page.toString());
+  if (params?.limit) searchParams.set("limit", params.limit.toString());
+
+  const response = await fetch(`${API_BASE}/deployments?${searchParams}`, {
     headers: getAuthHeaders(),
   });
-  return handleResponse<{ deployments: Deployment[] }>(response);
+  return handleResponse<{ deployments: Deployment[]; total?: number }>(response);
 }
 
 export async function createDeployment(data: CreateDeploymentInput) {

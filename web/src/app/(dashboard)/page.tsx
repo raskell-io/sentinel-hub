@@ -43,17 +43,17 @@ export default function DashboardPage() {
 
   const { data: instancesData, isLoading: instancesLoading } = useQuery({
     queryKey: ["instances"],
-    queryFn: listInstances,
+    queryFn: () => listInstances(),
   });
 
   const { data: configsData, isLoading: configsLoading } = useQuery({
     queryKey: ["configs"],
-    queryFn: listConfigs,
+    queryFn: () => listConfigs(),
   });
 
   const { data: deploymentsData, isLoading: deploymentsLoading } = useQuery({
     queryKey: ["deployments"],
-    queryFn: listDeployments,
+    queryFn: () => listDeployments(),
   });
 
   const {

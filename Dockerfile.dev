@@ -1,0 +1,16 @@
+# Development Dockerfile with hot reload support
+FROM golang:1.23-alpine
+
+WORKDIR /app
+
+# Install development dependencies
+RUN apk add --no-cache git ca-certificates
+
+# Install air for hot reload (optional - can use go run instead)
+RUN go install github.com/air-verse/air@latest
+
+# Expose ports
+EXPOSE 8080 9090
+
+# Default command (can be overridden in docker-compose)
+CMD ["air", "-c", ".air.toml"]

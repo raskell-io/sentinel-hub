@@ -8,6 +8,7 @@ import {
   FileCode2,
   Rocket,
   Bell,
+  Book,
   Users,
   ScrollText,
   Shield,
@@ -40,6 +41,11 @@ const mainNavItems = [
     title: "Alerts",
     href: "/alerts",
     icon: Bell,
+  },
+  {
+    title: "API Docs",
+    href: "/docs",
+    icon: Book,
   },
 ];
 
