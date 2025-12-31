@@ -155,12 +155,11 @@ Build a control plane that makes operating Sentinel fleets boring (in a good way
 - **Logging:** zerolog (structured JSON logging)
 - **Validation:** go-playground/validator
 
-### 6.2 Frontend (React/TypeScript)
-- **Framework:** React 18 with TypeScript
-- **Build:** Vite
+### 6.2 Frontend (Next.js/TypeScript)
+- **Framework:** Next.js 15 with React 19 and TypeScript
 - **State:** TanStack Query (server state), Zustand (client state)
-- **UI Components:** Radix UI primitives + Tailwind CSS
-- **Routing:** React Router v6
+- **UI Components:** shadcn/ui (Radix primitives + Tailwind CSS)
+- **Routing:** Next.js App Router
 - **Forms:** React Hook Form + Zod validation
 - **Charts:** Recharts or Tremor
 
@@ -391,18 +390,23 @@ When implementing anything, follow these rules:
 ## 14) Getting Started
 
 ```bash
-# Backend
-cd cmd/hub
-go run . serve
+# Install tools (Go, Node.js)
+mise install
 
-# Frontend
-cd web
-npm install
-npm run dev
+# Setup development environment
+mise run setup
 
-# Agent
-cd cmd/agent
-go run . --hub-url=localhost:8080
+# Run hub server
+mise run dev
+
+# Run web frontend (in another terminal)
+mise run dev:web
+
+# Run both together
+mise run dev:all
+
+# Run agent
+mise run dev:agent
 ```
 
 ---

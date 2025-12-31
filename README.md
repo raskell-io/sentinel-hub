@@ -18,7 +18,7 @@ Sentinel Hub provides centralized management for Sentinel proxy fleets:
 ```
 ┌─────────────┐     ┌─────────────┐     ┌─────────────┐
 │   Web UI    │────▶│  Hub API    │────▶│  Database   │
-│  (React)    │     │   (Go)      │     │ (SQLite/PG) │
+│  (Next.js)  │     │    (Go)     │     │ (SQLite/PG) │
 └─────────────┘     └──────┬──────┘     └─────────────┘
                            │
                     ┌──────┴──────┐
@@ -38,45 +38,47 @@ Sentinel Hub provides centralized management for Sentinel proxy fleets:
 
 ### Prerequisites
 
-- Go 1.25+
-- Node.js 20+ (for web UI)
-- SQLite or PostgreSQL
+- [mise](https://mise.jdx.dev/) (manages Go and Node.js versions)
 
-### Build
+### Setup
 
 ```bash
-# Build all binaries
-make build
-
-# Or build individually
-make build-hub
-make build-agent
-```
-
-### Run
-
-```bash
-# Start the Hub server
-./bin/hub serve --http-port 8080 --grpc-port 9090
-
-# Start an agent (on each Sentinel host)
-./bin/agent run --hub-url localhost:9090 --sentinel-config /etc/sentinel/config.kdl
+# Install tools and dependencies
+mise install
+mise run setup
 ```
 
 ### Development
 
 ```bash
-# Start Hub in development mode
-make dev
+# Run hub server
+mise run dev
 
-# Start web UI development server
-make web-dev
+# Run web frontend (in another terminal)
+mise run dev:web
 
-# Run tests
-make test
+# Run both together
+mise run dev:all
+```
 
-# Run linters
-make lint
+### Build
+
+```bash
+# Build all binaries
+mise run build
+
+# Build release binaries
+mise run release
+```
+
+### Test
+
+```bash
+# Run all tests
+mise run test
+
+# Run with coverage
+mise run test:coverage
 ```
 
 ## Configuration
@@ -127,6 +129,26 @@ GET    /api/v1/deployments/:id    # Get deployment status
 GET /health   # Liveness probe
 GET /ready    # Readiness probe
 ```
+
+## Available Tasks
+
+Run `mise tasks` to see all available tasks:
+
+```
+mise run build       # Build all binaries
+mise run dev         # Run hub in development mode
+mise run dev:web     # Run web frontend dev server
+mise run dev:all     # Run both together
+mise run test        # Run all tests
+mise run lint        # Run linters
+mise run check       # Run fmt, lint, and test
+```
+
+## Tech Stack
+
+- **Backend:** Go 1.23, chi router, zerolog
+- **Frontend:** Next.js 15, React 19, TypeScript, shadcn/ui, Tailwind CSS
+- **Database:** SQLite (dev), PostgreSQL (production)
 
 ## Documentation
 

@@ -1,0 +1,238 @@
+# Sentinel Hub - mise configuration
+# Fleet management control plane for Sentinel proxies
+
+[env]
+HUB_LOG_LEVEL = "info"
+HUB_LOG_FORMAT = "console"
+HUB_PORT = "8080"
+HUB_GRPC_PORT = "9090"
+HUB_DATABASE_URL = "sqlite://hub.db"
+
+[tools]
+go = "1.23"
+node = "22"
+
+# Build tasks
+[tasks.build]
+description = "Build all binaries"
+depends = ["build:hub", "build:agent"]
+
+[tasks."build:hub"]
+description = "Build the hub server"
+run = """
+mkdir -p bin
+go build -ldflags "-X main.version=$(git describe --tags --always --dirty 2>/dev/null || echo dev) -X main.commit=$(git rev-parse --short HEAD 2>/dev/null || echo none) -X main.date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" -o bin/hub ./cmd/hub
+"""
+
+[tasks."build:agent"]
+description = "Build the agent"
+run = """
+mkdir -p bin
+go build -ldflags "-X main.version=$(git describe --tags --always --dirty 2>/dev/null || echo dev) -X main.commit=$(git rev-parse --short HEAD 2>/dev/null || echo none) -X main.date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" -o bin/agent ./cmd/agent
+"""
+
+[tasks."build:web"]
+description = "Build web frontend"
+dir = "web"
+run = "npm run build"
+
+[tasks.release]
+description = "Build optimized release binaries"
+run = """
+mkdir -p bin
+CGO_ENABLED=0 go build -ldflags "-s -w -X main.version=$(git describe --tags --always --dirty 2>/dev/null || echo dev) -X main.commit=$(git rev-parse --short HEAD 2>/dev/null || echo none) -X main.date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" -o bin/hub ./cmd/hub
+CGO_ENABLED=0 go build -ldflags "-s -w -X main.version=$(git describe --tags --always --dirty 2>/dev/null || echo dev) -X main.commit=$(git rev-parse --short HEAD 2>/dev/null || echo none) -X main.date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" -o bin/agent ./cmd/agent
+echo "Release build complete"
+"""
+
+# Test tasks
+[tasks.test]
+description = "Run all tests"
+run = "go test -v -race ./..."
+
+[tasks."test:short"]
+description = "Run short tests"
+run = "go test -v -short ./..."
+
+[tasks."test:coverage"]
+description = "Run tests with coverage"
+run = """
+go test -v -race -coverprofile=coverage.out ./...
+go tool cover -html=coverage.out -o coverage.html
+echo "Coverage report: coverage.html"
+"""
+
+[tasks."test:web"]
+description = "Run frontend tests"
+dir = "web"
+run = "npm run test"
+
+# Code quality tasks
+[tasks.fmt]
+description = "Format code"
+run = "gofmt -w ."
+
+[tasks."fmt:check"]
+description = "Check code formatting"
+run = """
+test -z "$(gofmt -l .)" || (echo "Files need formatting:" && gofmt -l . && exit 1)
+"""
+
+[tasks.lint]
+description = "Run linters"
+run = """
+go vet ./...
+echo "Lint passed"
+"""
+
+[tasks."lint:web"]
+description = "Lint frontend"
+dir = "web"
+run = "npm run lint"
+
+[tasks.tidy]
+description = "Tidy go modules"
+run = "go mod tidy"
+
+[tasks.check]
+description = "Run fmt, lint, and test"
+depends = ["fmt", "lint", "test"]
+
+# Development tasks
+[tasks.dev]
+description = "Run hub in development mode"
+run = "go run ./cmd/hub serve"
+
+[tasks."dev:agent"]
+description = "Run agent in development mode"
+run = "go run ./cmd/agent run"
+
+[tasks."dev:web"]
+description = "Run web frontend dev server"
+dir = "web"
+run = "npm run dev"
+
+[tasks."dev:all"]
+description = "Run hub and web frontend together"
+run = """
+#!/bin/bash
+trap 'kill $(jobs -p) 2>/dev/null' EXIT
+
+echo "Starting Hub API server..."
+go run ./cmd/hub serve &
+HUB_PID=$!
+
+sleep 2
+echo "Starting Web frontend..."
+cd web && npm run dev &
+WEB_PID=$!
+
+wait $HUB_PID $WEB_PID
+"""
+
+# Web tasks
+[tasks."web:install"]
+description = "Install web dependencies"
+dir = "web"
+run = "npm install"
+
+[tasks."web:build"]
+description = "Build web frontend"
+dir = "web"
+run = "npm run build"
+
+[tasks."web:lint"]
+description = "Lint web frontend"
+dir = "web"
+run = "npm run lint"
+
+[tasks."web:typecheck"]
+description = "Type check web frontend"
+dir = "web"
+run = "npm run type-check"
+
+# Database tasks
+[tasks."db:migrate"]
+description = "Run database migrations"
+run = "echo 'TODO: implement migrations'"
+
+[tasks."db:reset"]
+description = "Reset database"
+run = """
+rm -f hub.db hub.db-journal hub.db-shm hub.db-wal
+echo "Database reset"
+"""
+
+# Docker tasks
+[tasks."docker:build"]
+description = "Build Docker images"
+run = """
+docker build -t sentinel-hub:$(git describe --tags --always --dirty 2>/dev/null || echo dev) -f Dockerfile.hub .
+docker build -t sentinel-agent:$(git describe --tags --always --dirty 2>/dev/null || echo dev) -f Dockerfile.agent .
+"""
+
+# Clean tasks
+[tasks.clean]
+description = "Clean build artifacts"
+run = """
+rm -rf bin/
+rm -f coverage.out coverage.html
+rm -f hub.db hub.db-*
+echo "Clean complete"
+"""
+
+[tasks."clean:web"]
+description = "Clean web build"
+dir = "web"
+run = "rm -rf .next node_modules"
+
+[tasks."clean:all"]
+description = "Deep clean everything"
+depends = ["clean", "clean:web"]
+
+# Setup tasks
+[tasks.setup]
+description = "Set up development environment"
+run = """
+echo "Setting up Sentinel Hub development environment..."
+
+echo "Installing Go dependencies..."
+go mod download
+
+echo "Installing web dependencies..."
+cd web && npm install
+
+echo ""
+echo "Development environment ready!"
+echo ""
+echo "Quick start:"
+echo "  mise run dev        # Run hub server"
+echo "  mise run dev:web    # Run web frontend"
+echo "  mise run dev:all    # Run both together"
+echo "  mise run test       # Run tests"
+echo "  mise run check      # Run all checks"
+"""
+
+# CI tasks
+[tasks.ci]
+description = "Run CI checks"
+depends = ["fmt:check", "lint", "test"]
+run = "echo 'All CI checks passed!'"
+
+# Quick aliases
+[tasks.b]
+alias = "build"
+
+[tasks.t]
+alias = "test"
+
+[tasks.d]
+alias = "dev"
+
+[tasks.c]
+alias = "check"
+
+# Default task
+[tasks.default]
+description = "Show available tasks"
+run = "mise tasks"

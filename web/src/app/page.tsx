@@ -1,99 +1,132 @@
-import { Shield, Server, Settings, Activity } from "lucide-react";
+import { Shield, Server, Settings, Activity, Plus } from "lucide-react";
 import Link from "next/link";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 
 export default function Home() {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 to-slate-800">
+    <div className="min-h-screen bg-background">
       {/* Header */}
-      <header className="border-b border-slate-700">
+      <header className="border-b">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Shield className="h-8 w-8 text-sentinel-500" />
-            <span className="text-xl font-bold text-white">Sentinel Hub</span>
+            <Shield className="h-8 w-8 text-primary" />
+            <span className="text-xl font-bold">Sentinel Hub</span>
           </div>
           <nav className="flex items-center gap-6">
             <Link
               href="/instances"
-              className="text-slate-300 hover:text-white transition"
+              className="text-muted-foreground hover:text-foreground transition"
             >
               Instances
             </Link>
             <Link
               href="/configs"
-              className="text-slate-300 hover:text-white transition"
+              className="text-muted-foreground hover:text-foreground transition"
             >
               Configs
             </Link>
             <Link
               href="/deployments"
-              className="text-slate-300 hover:text-white transition"
+              className="text-muted-foreground hover:text-foreground transition"
             >
               Deployments
             </Link>
+            <Button size="sm">
+              <Plus className="h-4 w-4" />
+              New Config
+            </Button>
           </nav>
         </div>
       </header>
 
-      {/* Hero */}
-      <main className="container mx-auto px-4 py-16">
-        <div className="text-center mb-16">
-          <h1 className="text-4xl font-bold text-white mb-4">
-            Fleet Management for Sentinel
-          </h1>
-          <p className="text-xl text-slate-400 max-w-2xl mx-auto">
-            Configure, deploy, and monitor your Sentinel reverse proxy fleet
-            from a single control plane.
+      {/* Main Content */}
+      <main className="container mx-auto px-4 py-8">
+        {/* Hero */}
+        <div className="text-center mb-12">
+          <h1 className="text-4xl font-bold mb-4">Fleet Management for Sentinel</h1>
+          <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
+            Configure, deploy, and monitor your Sentinel reverse proxy fleet from
+            a single control plane.
           </p>
         </div>
 
         {/* Stats Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-16">
-          <StatCard
-            icon={<Server className="h-8 w-8" />}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
+          <StatsCard
+            icon={<Server className="h-5 w-5" />}
             title="Instances"
             value="0"
-            subtitle="Online"
+            description="Online"
             href="/instances"
           />
-          <StatCard
-            icon={<Settings className="h-8 w-8" />}
+          <StatsCard
+            icon={<Settings className="h-5 w-5" />}
             title="Configurations"
             value="0"
-            subtitle="Active"
+            description="Active"
             href="/configs"
           />
-          <StatCard
-            icon={<Activity className="h-8 w-8" />}
+          <StatsCard
+            icon={<Activity className="h-5 w-5" />}
             title="Deployments"
             value="0"
-            subtitle="This week"
+            description="This week"
             href="/deployments"
           />
         </div>
 
         {/* Quick Actions */}
-        <div className="bg-slate-800 rounded-lg p-8 border border-slate-700">
-          <h2 className="text-xl font-semibold text-white mb-6">
-            Getting Started
-          </h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <ActionCard
-              title="Register an Instance"
-              description="Connect a Sentinel proxy to this Hub"
-              href="/instances/new"
-            />
-            <ActionCard
-              title="Create Configuration"
-              description="Define a new proxy configuration"
-              href="/configs/new"
-            />
-          </div>
+        <Card>
+          <CardHeader>
+            <CardTitle>Getting Started</CardTitle>
+            <CardDescription>
+              Set up your first Sentinel instance and configuration
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <QuickAction
+                title="Register an Instance"
+                description="Connect a Sentinel proxy to this Hub"
+                href="/instances/new"
+              />
+              <QuickAction
+                title="Create Configuration"
+                description="Define a new proxy configuration"
+                href="/configs/new"
+              />
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Recent Activity */}
+        <div className="mt-8">
+          <h2 className="text-xl font-semibold mb-4">Recent Activity</h2>
+          <Card>
+            <CardContent className="pt-6">
+              <div className="text-center py-8 text-muted-foreground">
+                <Activity className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                <p>No recent activity</p>
+                <p className="text-sm">
+                  Activity will appear here once you start managing your fleet
+                </p>
+              </div>
+            </CardContent>
+          </Card>
         </div>
       </main>
 
       {/* Footer */}
-      <footer className="border-t border-slate-700 py-6">
-        <div className="container mx-auto px-4 text-center text-slate-500 text-sm">
+      <footer className="border-t py-6 mt-12">
+        <div className="container mx-auto px-4 text-center text-muted-foreground text-sm">
           Sentinel Hub — Fleet management control plane
         </div>
       </footer>
@@ -101,39 +134,38 @@ export default function Home() {
   );
 }
 
-function StatCard({
+function StatsCard({
   icon,
   title,
   value,
-  subtitle,
+  description,
   href,
 }: {
   icon: React.ReactNode;
   title: string;
   value: string;
-  subtitle: string;
+  description: string;
   href: string;
 }) {
   return (
-    <Link
-      href={href}
-      className="bg-slate-800 rounded-lg p-6 border border-slate-700 hover:border-sentinel-500 transition group"
-    >
-      <div className="flex items-start justify-between">
-        <div>
-          <p className="text-slate-400 text-sm mb-1">{title}</p>
-          <p className="text-3xl font-bold text-white">{value}</p>
-          <p className="text-slate-500 text-sm">{subtitle}</p>
-        </div>
-        <div className="text-slate-600 group-hover:text-sentinel-500 transition">
-          {icon}
-        </div>
-      </div>
+    <Link href={href}>
+      <Card className="hover:border-primary/50 transition-colors cursor-pointer">
+        <CardHeader className="flex flex-row items-center justify-between pb-2">
+          <CardTitle className="text-sm font-medium text-muted-foreground">
+            {title}
+          </CardTitle>
+          <div className="text-muted-foreground">{icon}</div>
+        </CardHeader>
+        <CardContent>
+          <div className="text-3xl font-bold">{value}</div>
+          <p className="text-xs text-muted-foreground">{description}</p>
+        </CardContent>
+      </Card>
     </Link>
   );
 }
 
-function ActionCard({
+function QuickAction({
   title,
   description,
   href,
@@ -145,10 +177,10 @@ function ActionCard({
   return (
     <Link
       href={href}
-      className="block p-4 rounded-lg border border-slate-600 hover:border-sentinel-500 hover:bg-slate-700/50 transition"
+      className="block p-4 rounded-lg border hover:border-primary/50 hover:bg-accent/50 transition-colors"
     >
-      <h3 className="text-white font-medium mb-1">{title}</h3>
-      <p className="text-slate-400 text-sm">{description}</p>
+      <h3 className="font-medium mb-1">{title}</h3>
+      <p className="text-sm text-muted-foreground">{description}</p>
     </Link>
   );
 }
