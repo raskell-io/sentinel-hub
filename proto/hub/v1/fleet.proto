@@ -1,0 +1,311 @@
+syntax = "proto3";
+
+package sentinel.hub.v1;
+
+option go_package = "github.com/raskell-io/sentinel-hub/pkg/hubpb";
+
+import "google/protobuf/timestamp.proto";
+
+// FleetService handles communication between Sentinel agents and the Hub.
+// Uses a hybrid push/pull model: push for event notifications, pull for config fetching.
+service FleetService {
+  // ============================================
+  // Agent Lifecycle
+  // ============================================
+
+  // Register a new agent with the Hub.
+  // Called once when agent starts.
+  rpc Register(RegisterRequest) returns (RegisterResponse);
+
+  // Periodic heartbeat to report health and status.
+  // Default interval: 30 seconds.
+  rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
+
+  // Gracefully deregister when agent shuts down.
+  rpc Deregister(DeregisterRequest) returns (DeregisterResponse);
+
+  // ============================================
+  // Configuration (Pull Model)
+  // ============================================
+
+  // Fetch current configuration for this instance.
+  rpc GetConfig(GetConfigRequest) returns (GetConfigResponse);
+
+  // Get a specific config version (for rollback).
+  rpc GetConfigVersion(GetConfigVersionRequest) returns (GetConfigVersionResponse);
+
+  // ============================================
+  // Event Stream (Push Notifications)
+  // ============================================
+
+  // Subscribe to events (config updates, deployment requests).
+  // Long-lived server-streaming RPC.
+  rpc Subscribe(SubscribeRequest) returns (stream Event);
+
+  // ============================================
+  // Deployment Coordination
+  // ============================================
+
+  // Acknowledge receipt of deployment request.
+  rpc AckDeployment(AckDeploymentRequest) returns (AckDeploymentResponse);
+
+  // Report deployment progress/completion.
+  rpc ReportDeploymentStatus(DeploymentStatusRequest) returns (DeploymentStatusResponse);
+}
+
+// ============================================
+// Agent Lifecycle Messages
+// ============================================
+
+message RegisterRequest {
+  // Unique instance identifier (UUID).
+  string instance_id = 1;
+  // Human-readable name for the instance.
+  string instance_name = 2;
+  // Machine hostname.
+  string hostname = 3;
+  // Agent binary version.
+  string agent_version = 4;
+  // Sentinel proxy version.
+  string sentinel_version = 5;
+  // Custom labels for filtering and grouping.
+  map<string, string> labels = 6;
+  // Supported agent capabilities.
+  repeated string capabilities = 7;
+}
+
+message RegisterResponse {
+  // Session token for subsequent calls.
+  string token = 1;
+  // Current config version to apply.
+  string config_version = 2;
+  // Hash for change detection.
+  string config_hash = 3;
+  // Recommended heartbeat interval in seconds.
+  int32 heartbeat_interval_seconds = 4;
+}
+
+message HeartbeatRequest {
+  string instance_id = 1;
+  string token = 2;
+  InstanceStatus status = 3;
+  string current_config_version = 4;
+  string current_config_hash = 5;
+  InstanceMetrics metrics = 6;
+}
+
+message HeartbeatResponse {
+  // Hint to fetch new config.
+  bool config_update_available = 1;
+  // Latest available config version.
+  string latest_config_version = 2;
+  // Actions agent should take.
+  repeated PendingAction actions = 3;
+}
+
+message DeregisterRequest {
+  string instance_id = 1;
+  string token = 2;
+  // Reason for deregistration.
+  string reason = 3;
+}
+
+message DeregisterResponse {
+  bool acknowledged = 1;
+}
+
+// ============================================
+// Instance Status and Metrics
+// ============================================
+
+message InstanceStatus {
+  InstanceState state = 1;
+  // Human-readable status message.
+  string message = 2;
+  // Uptime in seconds.
+  int64 uptime_seconds = 3;
+  // Number of active connections.
+  int32 active_connections = 4;
+}
+
+enum InstanceState {
+  INSTANCE_STATE_UNKNOWN = 0;
+  INSTANCE_STATE_HEALTHY = 1;
+  INSTANCE_STATE_DEGRADED = 2;
+  INSTANCE_STATE_UNHEALTHY = 3;
+}
+
+message InstanceMetrics {
+  int64 requests_total = 1;
+  int64 requests_failed = 2;
+  double latency_p50_ms = 3;
+  double latency_p99_ms = 4;
+  int64 bytes_sent = 5;
+  int64 bytes_received = 6;
+}
+
+// ============================================
+// Configuration Messages
+// ============================================
+
+message GetConfigRequest {
+  string instance_id = 1;
+  string token = 2;
+  // Optional: specific version, empty for latest.
+  string version = 3;
+}
+
+message GetConfigResponse {
+  string version = 1;
+  string hash = 2;
+  // KDL configuration content.
+  string content = 3;
+  google.protobuf.Timestamp created_at = 4;
+}
+
+message GetConfigVersionRequest {
+  string instance_id = 1;
+  string token = 2;
+  string config_id = 3;
+  int32 version_number = 4;
+}
+
+message GetConfigVersionResponse {
+  string config_id = 1;
+  int32 version_number = 2;
+  string hash = 3;
+  string content = 4;
+  string change_summary = 5;
+  google.protobuf.Timestamp created_at = 6;
+}
+
+// ============================================
+// Event Stream Messages
+// ============================================
+
+message SubscribeRequest {
+  string instance_id = 1;
+  string token = 2;
+}
+
+message Event {
+  string event_id = 1;
+  EventType type = 2;
+  google.protobuf.Timestamp timestamp = 3;
+
+  oneof payload {
+    ConfigUpdateEvent config_update = 4;
+    DeploymentEvent deployment = 5;
+    DrainEvent drain = 6;
+    PingEvent ping = 7;
+  }
+}
+
+enum EventType {
+  EVENT_TYPE_UNKNOWN = 0;
+  EVENT_TYPE_CONFIG_UPDATE = 1;
+  EVENT_TYPE_DEPLOYMENT = 2;
+  EVENT_TYPE_DRAIN = 3;
+  EVENT_TYPE_PING = 4;
+}
+
+message ConfigUpdateEvent {
+  string config_version = 1;
+  string config_hash = 2;
+  string change_summary = 3;
+}
+
+message DeploymentEvent {
+  string deployment_id = 1;
+  string config_version = 2;
+  DeploymentStrategy strategy = 3;
+  // Position in rolling deployment (1-indexed).
+  int32 batch_position = 4;
+  // Total batches in deployment.
+  int32 batch_total = 5;
+  // Unix timestamp deadline.
+  google.protobuf.Timestamp deadline = 6;
+  // Whether this is a rollback deployment.
+  bool is_rollback = 7;
+}
+
+message DrainEvent {
+  // Time allowed for draining in seconds.
+  int32 drain_timeout_seconds = 1;
+  string reason = 2;
+}
+
+message PingEvent {
+  // Server timestamp for latency measurement.
+  google.protobuf.Timestamp server_time = 1;
+}
+
+enum DeploymentStrategy {
+  DEPLOYMENT_STRATEGY_UNKNOWN = 0;
+  DEPLOYMENT_STRATEGY_ALL_AT_ONCE = 1;
+  DEPLOYMENT_STRATEGY_ROLLING = 2;
+  DEPLOYMENT_STRATEGY_CANARY = 3;
+}
+
+// ============================================
+// Deployment Coordination Messages
+// ============================================
+
+message AckDeploymentRequest {
+  string instance_id = 1;
+  string token = 2;
+  string deployment_id = 3;
+  bool accepted = 4;
+  // Reason if not accepted.
+  string rejection_reason = 5;
+}
+
+message AckDeploymentResponse {
+  bool acknowledged = 1;
+  // Optional instruction from hub.
+  string instruction = 2;
+}
+
+message DeploymentStatusRequest {
+  string instance_id = 1;
+  string token = 2;
+  string deployment_id = 3;
+  DeploymentState state = 4;
+  string message = 5;
+  // Error details if failed.
+  string error_details = 6;
+}
+
+enum DeploymentState {
+  DEPLOYMENT_STATE_UNKNOWN = 0;
+  DEPLOYMENT_STATE_PENDING = 1;
+  DEPLOYMENT_STATE_IN_PROGRESS = 2;
+  DEPLOYMENT_STATE_VALIDATING = 3;
+  DEPLOYMENT_STATE_COMPLETED = 4;
+  DEPLOYMENT_STATE_FAILED = 5;
+  DEPLOYMENT_STATE_ROLLED_BACK = 6;
+}
+
+message DeploymentStatusResponse {
+  bool acknowledged = 1;
+  // Optional next action instruction.
+  string next_action = 2;
+}
+
+// ============================================
+// Pending Actions
+// ============================================
+
+message PendingAction {
+  ActionType type = 1;
+  string action_id = 2;
+  map<string, string> params = 3;
+}
+
+enum ActionType {
+  ACTION_TYPE_UNKNOWN = 0;
+  ACTION_TYPE_FETCH_CONFIG = 1;
+  ACTION_TYPE_APPLY_CONFIG = 2;
+  ACTION_TYPE_REPORT_STATUS = 3;
+  ACTION_TYPE_DRAIN = 4;
+}

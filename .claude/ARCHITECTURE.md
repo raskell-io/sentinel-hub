@@ -543,6 +543,70 @@ GET /ready        # Readiness probe (200 if database is connected)
 
 ---
 
+## Fleet Management Model
+
+**See also:** `docs/fleet-management.md` for detailed protocol specification.
+
+### Hybrid Push/Pull Model
+
+Sentinel Hub uses a **hybrid model** for configuration distribution:
+
+| Component | Model | Purpose |
+|-----------|-------|---------|
+| Event notifications | Push (gRPC stream) | Instant awareness of changes |
+| Config fetching | Pull (request/response) | Reliable delivery, retry-friendly |
+| Heartbeats | Pull (periodic) | Health reporting, config sync check |
+
+**Why hybrid?**
+- Pure push requires persistent connections (complex reconnection logic)
+- Pure pull has latency and wastes bandwidth
+- Hybrid: push for notifications, pull for payloads = best of both
+
+### Agent-Hub Communication
+
+```protobuf
+service FleetService {
+  // Lifecycle
+  rpc Register(RegisterRequest) returns (RegisterResponse);
+  rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
+  rpc Deregister(DeregisterRequest) returns (DeregisterResponse);
+
+  // Config (pull)
+  rpc GetConfig(GetConfigRequest) returns (GetConfigResponse);
+  rpc GetConfigVersion(GetConfigVersionRequest) returns (GetConfigVersionResponse);
+
+  // Events (push)
+  rpc Subscribe(SubscribeRequest) returns (stream Event);
+
+  // Deployment
+  rpc AckDeployment(AckDeploymentRequest) returns (AckDeploymentResponse);
+  rpc ReportDeploymentStatus(DeploymentStatusRequest) returns (DeploymentStatusResponse);
+}
+```
+
+### Instance State Machine
+
+```
+UNKNOWN → ONLINE ⇄ DEPLOYING
+              ↓↑
+           DEGRADED ⇄ OFFLINE → DRAINING → REMOVED
+```
+
+### Deployment Strategies
+
+1. **All-at-once**: All instances simultaneously (dev/test)
+2. **Rolling**: Sequential batches with health checks (production)
+3. **Canary**: Small subset first, metrics validation, then proceed
+
+### Key Design Decisions
+
+1. **Config validation at Hub**: Syntax and schema validation before storage
+2. **Semantic validation pre-deployment**: Address resolution, cert validation
+3. **Automatic rollback**: On health check failure during rolling deployment
+4. **Offline resilience**: Agents continue operating with last-known config
+
+---
+
 ## Future Architecture Considerations
 
 ### Multi-Region Support

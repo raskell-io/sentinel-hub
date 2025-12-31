@@ -9,8 +9,21 @@ HUB_GRPC_PORT = "9090"
 HUB_DATABASE_URL = "sqlite://hub.db"
 
 [tools]
-go = "1.23"
+go = "1.25.5"
 node = "22"
+
+# Proto generation
+[tasks.proto]
+description = "Generate Go code from proto files"
+run = """
+mkdir -p pkg/hubpb
+PATH="$HOME/.local/share/mise/installs/go/1.25.5/bin:$PATH" \
+protoc --go_out=. --go_opt=paths=source_relative \
+       --go-grpc_out=. --go-grpc_opt=paths=source_relative \
+       proto/hub/v1/fleet.proto
+mv proto/hub/v1/*.go pkg/hubpb/ 2>/dev/null || true
+echo "Proto files generated in pkg/hubpb/"
+"""
 
 # Build tasks
 [tasks.build]

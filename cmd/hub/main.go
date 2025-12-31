@@ -11,6 +11,10 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/raskell-io/sentinel-hub/internal/api"
+	"github.com/raskell-io/sentinel-hub/internal/fleet"
+	hubgrpc "github.com/raskell-io/sentinel-hub/internal/grpc"
+	"github.com/raskell-io/sentinel-hub/internal/store"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
@@ -84,6 +88,37 @@ func runServer(httpPort, grpcPort int, dbURL string) error {
 		Str("database", dbURL).
 		Msg("Starting Sentinel Hub")
 
+	// Initialize database
+	db, err := store.New(dbURL)
+	if err != nil {
+		return fmt.Errorf("failed to initialize database: %w", err)
+	}
+	defer db.Close()
+
+	log.Info().Msg("Database initialized successfully")
+
+	// Create gRPC server
+	grpcServer := hubgrpc.NewServer(db, grpcPort)
+
+	// Create deployment orchestrator
+	orchestrator := fleet.NewOrchestrator(db, grpcServer.FleetService())
+	if err := orchestrator.Start(); err != nil {
+		return fmt.Errorf("failed to start orchestrator: %w", err)
+	}
+
+	// Wire up status reporting from agents to orchestrator
+	grpcServer.FleetService().SetDeploymentStatusHandler(orchestrator.ReportInstanceStatus)
+
+	// Start gRPC server in background
+	go func() {
+		if err := grpcServer.Start(); err != nil {
+			log.Fatal().Err(err).Msg("gRPC server failed")
+		}
+	}()
+
+	// Create API handler
+	handler := api.NewHandler(db, orchestrator)
+
 	// Setup router
 	r := chi.NewRouter()
 
@@ -94,46 +129,77 @@ func runServer(httpPort, grpcPort int, dbURL string) error {
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Timeout(60 * time.Second))
 
+	// CORS middleware for development
+	r.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Accept, Authorization, Content-Type, X-Request-ID")
+
+			if r.Method == "OPTIONS" {
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+
+			next.ServeHTTP(w, r)
+		})
+	})
+
 	// Health check endpoints
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(`{"status":"ok"}`))
 	})
 
 	r.Get("/ready", func(w http.ResponseWriter, r *http.Request) {
-		// TODO: Check database connection
+		// Check database connection
+		if err := db.DB().Ping(); err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusServiceUnavailable)
+			w.Write([]byte(`{"status":"not ready","error":"database unavailable"}`))
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(`{"status":"ready"}`))
+	})
+
+	// Stats endpoint (shows connected agents)
+	r.Get("/stats", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintf(w, `{"connected_agents":%d}`, grpcServer.FleetService().GetSubscriberCount())
 	})
 
 	// API routes
 	r.Route("/api/v1", func(r chi.Router) {
 		// Instance management
 		r.Route("/instances", func(r chi.Router) {
-			r.Get("/", listInstances)
-			r.Post("/", createInstance)
-			r.Get("/{id}", getInstance)
-			r.Put("/{id}", updateInstance)
-			r.Delete("/{id}", deleteInstance)
+			r.Get("/", handler.ListInstances)
+			r.Post("/", handler.CreateInstance)
+			r.Get("/{id}", handler.GetInstance)
+			r.Put("/{id}", handler.UpdateInstance)
+			r.Delete("/{id}", handler.DeleteInstance)
 		})
 
 		// Configuration management
 		r.Route("/configs", func(r chi.Router) {
-			r.Get("/", listConfigs)
-			r.Post("/", createConfig)
-			r.Get("/{id}", getConfig)
-			r.Put("/{id}", updateConfig)
-			r.Delete("/{id}", deleteConfig)
-			r.Get("/{id}/versions", listConfigVersions)
-			r.Post("/{id}/rollback", rollbackConfig)
+			r.Get("/", handler.ListConfigs)
+			r.Post("/", handler.CreateConfig)
+			r.Get("/{id}", handler.GetConfig)
+			r.Put("/{id}", handler.UpdateConfig)
+			r.Delete("/{id}", handler.DeleteConfig)
+			r.Get("/{id}/versions", handler.ListConfigVersions)
+			r.Post("/{id}/rollback", handler.RollbackConfig)
 		})
 
 		// Deployments
 		r.Route("/deployments", func(r chi.Router) {
-			r.Get("/", listDeployments)
-			r.Post("/", createDeployment)
-			r.Get("/{id}", getDeployment)
-			r.Post("/{id}/cancel", cancelDeployment)
+			r.Get("/", handler.ListDeployments)
+			r.Post("/", handler.CreateDeployment)
+			r.Get("/{id}", handler.GetDeployment)
+			r.Post("/{id}/cancel", handler.CancelDeployment)
 		})
 	})
 
@@ -153,14 +219,23 @@ func runServer(httpPort, grpcPort int, dbURL string) error {
 
 	go func() {
 		<-quit
-		log.Info().Msg("Shutting down server...")
+		log.Info().Msg("Shutting down servers...")
 
+		// Stop orchestrator first (cancels in-progress deployments)
+		if err := orchestrator.Stop(); err != nil {
+			log.Error().Err(err).Msg("Error stopping orchestrator")
+		}
+
+		// Stop gRPC server
+		grpcServer.Stop()
+
+		// Stop HTTP server
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 
 		srv.SetKeepAlivesEnabled(false)
 		if err := srv.Shutdown(ctx); err != nil {
-			log.Fatal().Err(err).Msg("Could not gracefully shutdown server")
+			log.Fatal().Err(err).Msg("Could not gracefully shutdown HTTP server")
 		}
 		close(done)
 	}()
@@ -173,85 +248,4 @@ func runServer(httpPort, grpcPort int, dbURL string) error {
 	<-done
 	log.Info().Msg("Server stopped")
 	return nil
-}
-
-// Placeholder handlers - to be implemented
-func listInstances(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Write([]byte(`{"instances":[]}`))
-}
-
-func createInstance(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusNotImplemented)
-	w.Write([]byte(`{"error":"not implemented"}`))
-}
-
-func getInstance(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusNotImplemented)
-	w.Write([]byte(`{"error":"not implemented"}`))
-}
-
-func updateInstance(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusNotImplemented)
-	w.Write([]byte(`{"error":"not implemented"}`))
-}
-
-func deleteInstance(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusNotImplemented)
-	w.Write([]byte(`{"error":"not implemented"}`))
-}
-
-func listConfigs(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Write([]byte(`{"configs":[]}`))
-}
-
-func createConfig(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusNotImplemented)
-	w.Write([]byte(`{"error":"not implemented"}`))
-}
-
-func getConfig(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusNotImplemented)
-	w.Write([]byte(`{"error":"not implemented"}`))
-}
-
-func updateConfig(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusNotImplemented)
-	w.Write([]byte(`{"error":"not implemented"}`))
-}
-
-func deleteConfig(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusNotImplemented)
-	w.Write([]byte(`{"error":"not implemented"}`))
-}
-
-func listConfigVersions(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusNotImplemented)
-	w.Write([]byte(`{"error":"not implemented"}`))
-}
-
-func rollbackConfig(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusNotImplemented)
-	w.Write([]byte(`{"error":"not implemented"}`))
-}
-
-func listDeployments(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Write([]byte(`{"deployments":[]}`))
-}
-
-func createDeployment(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusNotImplemented)
-	w.Write([]byte(`{"error":"not implemented"}`))
-}
-
-func getDeployment(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusNotImplemented)
-	w.Write([]byte(`{"error":"not implemented"}`))
-}
-
-func cancelDeployment(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusNotImplemented)
-	w.Write([]byte(`{"error":"not implemented"}`))
 }
