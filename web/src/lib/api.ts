@@ -280,6 +280,14 @@ export async function getDeployment(id: string) {
   return handleResponse<Deployment>(response);
 }
 
+export async function cancelDeployment(id: string) {
+  const response = await fetch(`${API_BASE}/deployments/${id}/cancel`, {
+    method: "POST",
+    headers: getAuthHeaders(),
+  });
+  return handleResponse<Deployment>(response);
+}
+
 // Audit Logs (admin only)
 export interface AuditLog {
   id: string;
