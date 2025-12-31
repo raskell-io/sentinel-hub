@@ -642,3 +642,20 @@ func (s *FleetService) SetDeploymentStatusHandler(handler DeploymentStatusHandle
 	defer s.deploymentStatusMu.Unlock()
 	s.deploymentStatusHandler = handler
 }
+
+// SetSubscriber adds a subscriber channel for an instance (for testing).
+func (s *FleetService) SetSubscriber(instanceID string, ch chan *pb.Event) {
+	s.subscribersMu.Lock()
+	defer s.subscribersMu.Unlock()
+	s.subscribers[instanceID] = ch
+}
+
+// RemoveSubscriber removes a subscriber channel for an instance (for testing).
+func (s *FleetService) RemoveSubscriber(instanceID string) {
+	s.subscribersMu.Lock()
+	defer s.subscribersMu.Unlock()
+	if ch, ok := s.subscribers[instanceID]; ok {
+		close(ch)
+		delete(s.subscribers, instanceID)
+	}
+}
