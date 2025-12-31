@@ -1,3 +1,5 @@
+import { useAuthStore, User } from "@/stores/auth-store";
+
 const API_BASE = "/api/v1";
 
 export class ApiError extends Error {
@@ -11,8 +13,23 @@ export class ApiError extends Error {
   }
 }
 
+function getAuthHeaders(): HeadersInit {
+  const token = useAuthStore.getState().accessToken;
+  const headers: HeadersInit = {
+    "Content-Type": "application/json",
+  };
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+  return headers;
+}
+
 async function handleResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
+    // On 401, clear auth state
+    if (response.status === 401) {
+      useAuthStore.getState().clearAuth();
+    }
     const error = await response.json().catch(() => ({}));
     throw new ApiError(
       response.status,
@@ -23,32 +40,161 @@ async function handleResponse<T>(response: Response): Promise<T> {
   return response.json();
 }
 
+// Auth
+export interface LoginCredentials {
+  email: string;
+  password: string;
+}
+
+export interface LoginResponse {
+  access_token: string;
+  refresh_token: string;
+  token_type: string;
+  expires_in: number;
+  user: User;
+}
+
+export interface RefreshResponse {
+  access_token: string;
+  token_type: string;
+  expires_in: number;
+}
+
+export async function login(credentials: LoginCredentials): Promise<LoginResponse> {
+  const response = await fetch(`${API_BASE}/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(credentials),
+  });
+  return handleResponse<LoginResponse>(response);
+}
+
+export async function logout(): Promise<void> {
+  const response = await fetch(`${API_BASE}/auth/logout`, {
+    method: "POST",
+    headers: getAuthHeaders(),
+  });
+  if (!response.ok && response.status !== 401) {
+    const error = await response.json().catch(() => ({}));
+    throw new ApiError(
+      response.status,
+      error.error?.code || "UNKNOWN_ERROR",
+      error.error?.message || response.statusText
+    );
+  }
+}
+
+export async function refreshToken(refreshToken: string): Promise<RefreshResponse> {
+  const response = await fetch(`${API_BASE}/auth/refresh`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ refresh_token: refreshToken }),
+  });
+  return handleResponse<RefreshResponse>(response);
+}
+
+export async function getCurrentUser(): Promise<User> {
+  const response = await fetch(`${API_BASE}/auth/me`, {
+    headers: getAuthHeaders(),
+  });
+  return handleResponse<User>(response);
+}
+
+// Users (admin only)
+export interface CreateUserInput {
+  email: string;
+  password: string;
+  name: string;
+  role: "admin" | "operator" | "viewer";
+}
+
+export interface UpdateUserInput {
+  name?: string;
+  role?: "admin" | "operator" | "viewer";
+  password?: string;
+}
+
+export async function listUsers() {
+  const response = await fetch(`${API_BASE}/users`, {
+    headers: getAuthHeaders(),
+  });
+  return handleResponse<{ users: User[] }>(response);
+}
+
+export async function getUser(id: string) {
+  const response = await fetch(`${API_BASE}/users/${id}`, {
+    headers: getAuthHeaders(),
+  });
+  return handleResponse<User>(response);
+}
+
+export async function createUser(data: CreateUserInput) {
+  const response = await fetch(`${API_BASE}/users`, {
+    method: "POST",
+    headers: getAuthHeaders(),
+    body: JSON.stringify(data),
+  });
+  return handleResponse<User>(response);
+}
+
+export async function updateUser(id: string, data: UpdateUserInput) {
+  const response = await fetch(`${API_BASE}/users/${id}`, {
+    method: "PUT",
+    headers: getAuthHeaders(),
+    body: JSON.stringify(data),
+  });
+  return handleResponse<User>(response);
+}
+
+export async function deleteUser(id: string) {
+  const response = await fetch(`${API_BASE}/users/${id}`, {
+    method: "DELETE",
+    headers: getAuthHeaders(),
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new ApiError(
+      response.status,
+      error.error?.code || "UNKNOWN_ERROR",
+      error.error?.message || response.statusText
+    );
+  }
+}
+
 // Instances
 export async function listInstances() {
-  const response = await fetch(`${API_BASE}/instances`);
+  const response = await fetch(`${API_BASE}/instances`, {
+    headers: getAuthHeaders(),
+  });
   return handleResponse<{ instances: Instance[] }>(response);
 }
 
 export async function getInstance(id: string) {
-  const response = await fetch(`${API_BASE}/instances/${id}`);
+  const response = await fetch(`${API_BASE}/instances/${id}`, {
+    headers: getAuthHeaders(),
+  });
   return handleResponse<Instance>(response);
 }
 
 // Configurations
 export async function listConfigs() {
-  const response = await fetch(`${API_BASE}/configs`);
+  const response = await fetch(`${API_BASE}/configs`, {
+    headers: getAuthHeaders(),
+  });
   return handleResponse<{ configs: Config[] }>(response);
 }
 
 export async function getConfig(id: string) {
-  const response = await fetch(`${API_BASE}/configs/${id}`);
+  const response = await fetch(`${API_BASE}/configs/${id}`, {
+    headers: getAuthHeaders(),
+  });
   return handleResponse<Config>(response);
 }
 
 export async function createConfig(data: CreateConfigInput) {
   const response = await fetch(`${API_BASE}/configs`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: getAuthHeaders(),
     body: JSON.stringify(data),
   });
   return handleResponse<Config>(response);
@@ -57,7 +203,7 @@ export async function createConfig(data: CreateConfigInput) {
 export async function updateConfig(id: string, data: UpdateConfigInput) {
   const response = await fetch(`${API_BASE}/configs/${id}`, {
     method: "PUT",
-    headers: { "Content-Type": "application/json" },
+    headers: getAuthHeaders(),
     body: JSON.stringify(data),
   });
   return handleResponse<Config>(response);
@@ -65,17 +211,59 @@ export async function updateConfig(id: string, data: UpdateConfigInput) {
 
 // Deployments
 export async function listDeployments() {
-  const response = await fetch(`${API_BASE}/deployments`);
+  const response = await fetch(`${API_BASE}/deployments`, {
+    headers: getAuthHeaders(),
+  });
   return handleResponse<{ deployments: Deployment[] }>(response);
 }
 
 export async function createDeployment(data: CreateDeploymentInput) {
   const response = await fetch(`${API_BASE}/deployments`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: getAuthHeaders(),
     body: JSON.stringify(data),
   });
   return handleResponse<Deployment>(response);
+}
+
+export async function getDeployment(id: string) {
+  const response = await fetch(`${API_BASE}/deployments/${id}`, {
+    headers: getAuthHeaders(),
+  });
+  return handleResponse<Deployment>(response);
+}
+
+// Audit Logs (admin only)
+export interface AuditLog {
+  id: string;
+  userId: string;
+  userEmail: string;
+  action: string;
+  resourceType: string;
+  resourceId: string;
+  details: Record<string, unknown>;
+  ipAddress: string;
+  createdAt: string;
+}
+
+export async function listAuditLogs(params?: {
+  limit?: number;
+  offset?: number;
+  userId?: string;
+  action?: string;
+  resourceType?: string;
+}) {
+  const searchParams = new URLSearchParams();
+  if (params?.limit) searchParams.set("limit", params.limit.toString());
+  if (params?.offset) searchParams.set("offset", params.offset.toString());
+  if (params?.userId) searchParams.set("user_id", params.userId);
+  if (params?.action) searchParams.set("action", params.action);
+  if (params?.resourceType) searchParams.set("resource_type", params.resourceType);
+
+  const response = await fetch(`${API_BASE}/audit-logs?${searchParams}`, {
+    headers: getAuthHeaders(),
+  });
+  return handleResponse<{ logs: AuditLog[]; total: number }>(response);
 }
 
 // Types
