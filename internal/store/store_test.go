@@ -1168,3 +1168,268 @@ func TestIntPtr(t *testing.T) {
 		t.Errorf("result = %d, want 42", *result)
 	}
 }
+
+// ============================================
+// Deployment Instance Tests
+// ============================================
+
+func TestStore_CreateDeploymentInstance(t *testing.T) {
+	s := setupTestStore(t)
+	ctx := context.Background()
+
+	// Create required parent objects
+	createTestConfigWithVersion(t, s, "cfg-1", 1)
+	inst := &Instance{Name: "inst-1", Hostname: "host1", AgentVersion: "1.0", SentinelVersion: "1.0"}
+	s.CreateInstance(ctx, inst)
+	dep := &Deployment{ConfigID: "cfg-1", ConfigVersion: 1, TargetInstances: []string{inst.ID}}
+	s.CreateDeployment(ctx, dep)
+
+	// Create deployment instance
+	now := time.Now().UTC()
+	di := &DeploymentInstance{
+		DeploymentID: dep.ID,
+		InstanceID:   inst.ID,
+		Status:       DeploymentInstanceStatusPending,
+		StartedAt:    &now,
+	}
+
+	err := s.CreateDeploymentInstance(ctx, di)
+	if err != nil {
+		t.Fatalf("CreateDeploymentInstance failed: %v", err)
+	}
+
+	if di.ID == "" {
+		t.Error("ID should be generated")
+	}
+}
+
+func TestStore_GetDeploymentInstance(t *testing.T) {
+	s := setupTestStore(t)
+	ctx := context.Background()
+
+	// Create required parent objects
+	createTestConfigWithVersion(t, s, "cfg-1", 1)
+	inst := &Instance{Name: "inst-1", Hostname: "host1", AgentVersion: "1.0", SentinelVersion: "1.0"}
+	s.CreateInstance(ctx, inst)
+	dep := &Deployment{ConfigID: "cfg-1", ConfigVersion: 1, TargetInstances: []string{inst.ID}}
+	s.CreateDeployment(ctx, dep)
+
+	// Create deployment instance
+	now := time.Now().UTC()
+	errorMsg := "test error"
+	di := &DeploymentInstance{
+		DeploymentID: dep.ID,
+		InstanceID:   inst.ID,
+		Status:       DeploymentInstanceStatusFailed,
+		StartedAt:    &now,
+		CompletedAt:  &now,
+		ErrorMessage: &errorMsg,
+	}
+	s.CreateDeploymentInstance(ctx, di)
+
+	// Retrieve it
+	retrieved, err := s.GetDeploymentInstance(ctx, dep.ID, inst.ID)
+	if err != nil {
+		t.Fatalf("GetDeploymentInstance failed: %v", err)
+	}
+	if retrieved == nil {
+		t.Fatal("GetDeploymentInstance returned nil")
+	}
+
+	if retrieved.Status != DeploymentInstanceStatusFailed {
+		t.Errorf("Status = %q, want %q", retrieved.Status, DeploymentInstanceStatusFailed)
+	}
+	if retrieved.ErrorMessage == nil || *retrieved.ErrorMessage != "test error" {
+		t.Error("ErrorMessage not preserved")
+	}
+}
+
+func TestStore_GetDeploymentInstance_NotFound(t *testing.T) {
+	s := setupTestStore(t)
+	ctx := context.Background()
+
+	di, err := s.GetDeploymentInstance(ctx, "nonexistent", "nonexistent")
+	if err != nil {
+		t.Fatalf("GetDeploymentInstance failed: %v", err)
+	}
+	if di != nil {
+		t.Error("expected nil for nonexistent deployment instance")
+	}
+}
+
+func TestStore_ListDeploymentInstances(t *testing.T) {
+	s := setupTestStore(t)
+	ctx := context.Background()
+
+	// Create required parent objects
+	createTestConfigWithVersion(t, s, "cfg-1", 1)
+	instances := make([]*Instance, 3)
+	for i := 0; i < 3; i++ {
+		inst := &Instance{Name: "inst-" + string(rune('a'+i)), Hostname: "host", AgentVersion: "1.0", SentinelVersion: "1.0"}
+		s.CreateInstance(ctx, inst)
+		instances[i] = inst
+	}
+
+	instanceIDs := make([]string, 3)
+	for i, inst := range instances {
+		instanceIDs[i] = inst.ID
+	}
+	dep := &Deployment{ConfigID: "cfg-1", ConfigVersion: 1, TargetInstances: instanceIDs}
+	s.CreateDeployment(ctx, dep)
+
+	// Create deployment instances
+	now := time.Now().UTC()
+	for _, inst := range instances {
+		di := &DeploymentInstance{
+			DeploymentID: dep.ID,
+			InstanceID:   inst.ID,
+			Status:       DeploymentInstanceStatusCompleted,
+			StartedAt:    &now,
+			CompletedAt:  &now,
+		}
+		s.CreateDeploymentInstance(ctx, di)
+	}
+
+	// List them
+	list, err := s.ListDeploymentInstances(ctx, dep.ID)
+	if err != nil {
+		t.Fatalf("ListDeploymentInstances failed: %v", err)
+	}
+	if len(list) != 3 {
+		t.Errorf("len(list) = %d, want 3", len(list))
+	}
+}
+
+func TestStore_UpdateDeploymentInstance(t *testing.T) {
+	s := setupTestStore(t)
+	ctx := context.Background()
+
+	// Create required parent objects
+	createTestConfigWithVersion(t, s, "cfg-1", 1)
+	inst := &Instance{Name: "inst-1", Hostname: "host1", AgentVersion: "1.0", SentinelVersion: "1.0"}
+	s.CreateInstance(ctx, inst)
+	dep := &Deployment{ConfigID: "cfg-1", ConfigVersion: 1, TargetInstances: []string{inst.ID}}
+	s.CreateDeployment(ctx, dep)
+
+	// Create deployment instance
+	now := time.Now().UTC()
+	di := &DeploymentInstance{
+		DeploymentID: dep.ID,
+		InstanceID:   inst.ID,
+		Status:       DeploymentInstanceStatusPending,
+		StartedAt:    &now,
+	}
+	s.CreateDeploymentInstance(ctx, di)
+
+	// Update it
+	completedAt := time.Now().UTC()
+	di.Status = DeploymentInstanceStatusCompleted
+	di.CompletedAt = &completedAt
+
+	err := s.UpdateDeploymentInstance(ctx, di)
+	if err != nil {
+		t.Fatalf("UpdateDeploymentInstance failed: %v", err)
+	}
+
+	// Verify update
+	retrieved, _ := s.GetDeploymentInstance(ctx, dep.ID, inst.ID)
+	if retrieved.Status != DeploymentInstanceStatusCompleted {
+		t.Errorf("Status = %q, want %q", retrieved.Status, DeploymentInstanceStatusCompleted)
+	}
+	if retrieved.CompletedAt == nil {
+		t.Error("CompletedAt should be set")
+	}
+}
+
+func TestStore_UpdateDeploymentInstance_NotFound(t *testing.T) {
+	s := setupTestStore(t)
+	ctx := context.Background()
+
+	di := &DeploymentInstance{
+		DeploymentID: "nonexistent",
+		InstanceID:   "nonexistent",
+		Status:       DeploymentInstanceStatusCompleted,
+	}
+
+	err := s.UpdateDeploymentInstance(ctx, di)
+	if err == nil {
+		t.Error("expected error for nonexistent deployment instance")
+	}
+}
+
+func TestStore_UpsertDeploymentInstance(t *testing.T) {
+	s := setupTestStore(t)
+	ctx := context.Background()
+
+	// Create required parent objects
+	createTestConfigWithVersion(t, s, "cfg-1", 1)
+	inst := &Instance{Name: "inst-1", Hostname: "host1", AgentVersion: "1.0", SentinelVersion: "1.0"}
+	s.CreateInstance(ctx, inst)
+	dep := &Deployment{ConfigID: "cfg-1", ConfigVersion: 1, TargetInstances: []string{inst.ID}}
+	s.CreateDeployment(ctx, dep)
+
+	now := time.Now().UTC()
+
+	// First upsert - should create
+	di := &DeploymentInstance{
+		DeploymentID: dep.ID,
+		InstanceID:   inst.ID,
+		Status:       DeploymentInstanceStatusPending,
+		StartedAt:    &now,
+	}
+	err := s.UpsertDeploymentInstance(ctx, di)
+	if err != nil {
+		t.Fatalf("UpsertDeploymentInstance (create) failed: %v", err)
+	}
+
+	// Second upsert - should update
+	di.Status = DeploymentInstanceStatusCompleted
+	completedAt := time.Now().UTC()
+	di.CompletedAt = &completedAt
+	err = s.UpsertDeploymentInstance(ctx, di)
+	if err != nil {
+		t.Fatalf("UpsertDeploymentInstance (update) failed: %v", err)
+	}
+
+	// Verify
+	retrieved, _ := s.GetDeploymentInstance(ctx, dep.ID, inst.ID)
+	if retrieved.Status != DeploymentInstanceStatusCompleted {
+		t.Errorf("Status = %q, want %q", retrieved.Status, DeploymentInstanceStatusCompleted)
+	}
+	// StartedAt should be preserved (not overwritten)
+	if retrieved.StartedAt == nil {
+		t.Error("StartedAt should be preserved")
+	}
+}
+
+func TestStore_DeleteDeploymentInstances(t *testing.T) {
+	s := setupTestStore(t)
+	ctx := context.Background()
+
+	// Create required parent objects
+	createTestConfigWithVersion(t, s, "cfg-1", 1)
+	inst := &Instance{Name: "inst-1", Hostname: "host1", AgentVersion: "1.0", SentinelVersion: "1.0"}
+	s.CreateInstance(ctx, inst)
+	dep := &Deployment{ConfigID: "cfg-1", ConfigVersion: 1, TargetInstances: []string{inst.ID}}
+	s.CreateDeployment(ctx, dep)
+
+	// Create deployment instance
+	di := &DeploymentInstance{
+		DeploymentID: dep.ID,
+		InstanceID:   inst.ID,
+		Status:       DeploymentInstanceStatusCompleted,
+	}
+	s.CreateDeploymentInstance(ctx, di)
+
+	// Delete all instances for deployment
+	err := s.DeleteDeploymentInstances(ctx, dep.ID)
+	if err != nil {
+		t.Fatalf("DeleteDeploymentInstances failed: %v", err)
+	}
+
+	// Verify deleted
+	list, _ := s.ListDeploymentInstances(ctx, dep.ID)
+	if len(list) != 0 {
+		t.Errorf("len(list) = %d, want 0", len(list))
+	}
+}

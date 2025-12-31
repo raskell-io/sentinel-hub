@@ -70,11 +70,13 @@ func NewDeploymentRunner(cfg DeploymentRunnerConfig) *DeploymentRunner {
 		cancel:             cancel,
 	}
 
-	// Initialize instance results
+	// Initialize instance results and persist to DB
 	for _, instanceID := range cfg.Deployment.TargetInstances {
 		runner.instanceResults[instanceID] = &instanceResult{
 			Status: pb.DeploymentState_DEPLOYMENT_STATE_PENDING,
 		}
+		// Create initial DB record
+		runner.persistInstanceStatus(context.Background(), instanceID)
 	}
 
 	return runner
@@ -374,6 +376,7 @@ func (r *DeploymentRunner) deployToInstance(ctx context.Context, instanceID stri
 		StartedAt: &now,
 	}
 	r.instanceResultsMu.Unlock()
+	r.persistInstanceStatus(ctx, instanceID)
 
 	// Check if instance is subscribed
 	if !r.fleetService.IsInstanceSubscribed(instanceID) {
@@ -421,6 +424,7 @@ func (r *DeploymentRunner) deployToInstance(ctx context.Context, instanceID stri
 		result.CompletedAt = &completedAt
 	}
 	r.instanceResultsMu.Unlock()
+	r.persistInstanceStatus(ctx, instanceID)
 
 	// Update instance in database
 	inst, err := r.store.GetInstance(ctx, instanceID)
@@ -476,13 +480,13 @@ func (r *DeploymentRunner) waitForInstance(ctx context.Context, instanceID strin
 func (r *DeploymentRunner) setInstanceError(instanceID, errorMsg string) {
 	now := time.Now().UTC()
 	r.instanceResultsMu.Lock()
-	defer r.instanceResultsMu.Unlock()
-
 	if result, ok := r.instanceResults[instanceID]; ok {
 		result.Status = pb.DeploymentState_DEPLOYMENT_STATE_FAILED
 		result.CompletedAt = &now
 		result.ErrorMessage = errorMsg
 	}
+	r.instanceResultsMu.Unlock()
+	r.persistInstanceStatus(context.Background(), instanceID)
 }
 
 // ReportInstanceStatus handles status reports from agents.
@@ -490,10 +494,9 @@ func (r *DeploymentRunner) ReportInstanceStatus(instanceID string, state pb.Depl
 	now := time.Now().UTC()
 
 	r.instanceResultsMu.Lock()
-	defer r.instanceResultsMu.Unlock()
-
 	result, ok := r.instanceResults[instanceID]
 	if !ok {
+		r.instanceResultsMu.Unlock()
 		return
 	}
 
@@ -506,6 +509,10 @@ func (r *DeploymentRunner) ReportInstanceStatus(instanceID string, state pb.Depl
 	if errorDetails != "" {
 		result.ErrorMessage = errorDetails
 	}
+	r.instanceResultsMu.Unlock()
+
+	// Persist to database
+	r.persistInstanceStatus(context.Background(), instanceID)
 
 	log.Debug().
 		Str("deployment_id", r.deployment.ID).
@@ -536,6 +543,62 @@ func (r *DeploymentRunner) GetInstanceResults() map[string]InstanceDeploymentRes
 // Cancel cancels the deployment.
 func (r *DeploymentRunner) Cancel() {
 	r.cancel()
+}
+
+// persistInstanceStatus saves the current instance status to the database.
+func (r *DeploymentRunner) persistInstanceStatus(ctx context.Context, instanceID string) {
+	// Skip if store is not available (e.g., in unit tests)
+	if r.store == nil {
+		return
+	}
+
+	r.instanceResultsMu.RLock()
+	result, ok := r.instanceResults[instanceID]
+	if !ok {
+		r.instanceResultsMu.RUnlock()
+		return
+	}
+	// Copy values while holding lock
+	status := result.Status
+	startedAt := result.StartedAt
+	completedAt := result.CompletedAt
+	errorMsg := result.ErrorMessage
+	r.instanceResultsMu.RUnlock()
+
+	// Map protobuf state to store status
+	var storeStatus store.DeploymentInstanceStatus
+	switch status {
+	case pb.DeploymentState_DEPLOYMENT_STATE_PENDING:
+		storeStatus = store.DeploymentInstanceStatusPending
+	case pb.DeploymentState_DEPLOYMENT_STATE_IN_PROGRESS:
+		storeStatus = store.DeploymentInstanceStatusInProgress
+	case pb.DeploymentState_DEPLOYMENT_STATE_COMPLETED:
+		storeStatus = store.DeploymentInstanceStatusCompleted
+	case pb.DeploymentState_DEPLOYMENT_STATE_FAILED:
+		storeStatus = store.DeploymentInstanceStatusFailed
+	case pb.DeploymentState_DEPLOYMENT_STATE_ROLLED_BACK:
+		storeStatus = store.DeploymentInstanceStatusRolledBack
+	default:
+		storeStatus = store.DeploymentInstanceStatusPending
+	}
+
+	di := &store.DeploymentInstance{
+		DeploymentID: r.deployment.ID,
+		InstanceID:   instanceID,
+		Status:       storeStatus,
+		StartedAt:    startedAt,
+		CompletedAt:  completedAt,
+	}
+	if errorMsg != "" {
+		di.ErrorMessage = &errorMsg
+	}
+
+	if err := r.store.UpsertDeploymentInstance(ctx, di); err != nil {
+		log.Warn().Err(err).
+			Str("deployment_id", r.deployment.ID).
+			Str("instance_id", instanceID).
+			Msg("Failed to persist deployment instance status")
+	}
 }
 
 // allSucceeded returns true if all instances completed successfully.

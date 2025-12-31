@@ -247,10 +247,35 @@ func (o *Orchestrator) GetDeploymentStatus(ctx context.Context, deploymentID str
 	o.deploymentsMu.RUnlock()
 
 	if exists {
+		// Runner is active, get live status
 		status.InstanceResults = runner.GetInstanceResults()
+	} else {
+		// Runner is gone, load from database
+		instances, err := o.store.ListDeploymentInstances(ctx, deploymentID)
+		if err != nil {
+			log.Warn().Err(err).Str("deployment_id", deploymentID).Msg("Failed to load deployment instances from DB")
+		} else {
+			for _, di := range instances {
+				status.InstanceResults[di.InstanceID] = InstanceDeploymentResult{
+					InstanceID:   di.InstanceID,
+					Status:       string(di.Status),
+					StartedAt:    di.StartedAt,
+					CompletedAt:  di.CompletedAt,
+					ErrorMessage: stringValue(di.ErrorMessage),
+				}
+			}
+		}
 	}
 
 	return status, nil
+}
+
+// stringValue safely dereferences a string pointer, returning empty string if nil.
+func stringValue(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
 }
 
 // DeploymentStatus provides detailed status of a deployment.

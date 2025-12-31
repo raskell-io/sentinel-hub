@@ -753,3 +753,156 @@ func (s *Store) UpdateDeployment(ctx context.Context, dep *Deployment) error {
 
 	return nil
 }
+
+// ============================================
+// Deployment Instance Operations
+// ============================================
+
+// CreateDeploymentInstance creates a new deployment instance record.
+func (s *Store) CreateDeploymentInstance(ctx context.Context, di *DeploymentInstance) error {
+	if di.ID == "" {
+		di.ID = uuid.New().String()
+	}
+
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO deployment_instances (id, deployment_id, instance_id, status, started_at, completed_at, error_message)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
+	`,
+		di.ID, di.DeploymentID, di.InstanceID, di.Status,
+		NullTime(di.StartedAt), NullTime(di.CompletedAt), NullString(di.ErrorMessage),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create deployment instance: %w", err)
+	}
+
+	return nil
+}
+
+// GetDeploymentInstance retrieves a deployment instance by deployment and instance ID.
+func (s *Store) GetDeploymentInstance(ctx context.Context, deploymentID, instanceID string) (*DeploymentInstance, error) {
+	row := s.db.QueryRowContext(ctx, `
+		SELECT id, deployment_id, instance_id, status, started_at, completed_at, error_message
+		FROM deployment_instances
+		WHERE deployment_id = ? AND instance_id = ?
+	`, deploymentID, instanceID)
+
+	var di DeploymentInstance
+	var startedAt, completedAt sql.NullTime
+	var errorMessage sql.NullString
+
+	err := row.Scan(
+		&di.ID, &di.DeploymentID, &di.InstanceID, &di.Status,
+		&startedAt, &completedAt, &errorMessage,
+	)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get deployment instance: %w", err)
+	}
+
+	di.StartedAt = TimePtr(startedAt)
+	di.CompletedAt = TimePtr(completedAt)
+	di.ErrorMessage = StringPtr(errorMessage)
+
+	return &di, nil
+}
+
+// ListDeploymentInstances retrieves all instances for a deployment.
+func (s *Store) ListDeploymentInstances(ctx context.Context, deploymentID string) ([]*DeploymentInstance, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, deployment_id, instance_id, status, started_at, completed_at, error_message
+		FROM deployment_instances
+		WHERE deployment_id = ?
+		ORDER BY started_at ASC
+	`, deploymentID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list deployment instances: %w", err)
+	}
+	defer rows.Close()
+
+	var instances []*DeploymentInstance
+	for rows.Next() {
+		var di DeploymentInstance
+		var startedAt, completedAt sql.NullTime
+		var errorMessage sql.NullString
+
+		err := rows.Scan(
+			&di.ID, &di.DeploymentID, &di.InstanceID, &di.Status,
+			&startedAt, &completedAt, &errorMessage,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan deployment instance: %w", err)
+		}
+
+		di.StartedAt = TimePtr(startedAt)
+		di.CompletedAt = TimePtr(completedAt)
+		di.ErrorMessage = StringPtr(errorMessage)
+
+		instances = append(instances, &di)
+	}
+
+	return instances, rows.Err()
+}
+
+// UpdateDeploymentInstance updates a deployment instance record.
+func (s *Store) UpdateDeploymentInstance(ctx context.Context, di *DeploymentInstance) error {
+	result, err := s.db.ExecContext(ctx, `
+		UPDATE deployment_instances SET
+			status = ?, started_at = ?, completed_at = ?, error_message = ?
+		WHERE deployment_id = ? AND instance_id = ?
+	`,
+		di.Status, NullTime(di.StartedAt), NullTime(di.CompletedAt), NullString(di.ErrorMessage),
+		di.DeploymentID, di.InstanceID,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to update deployment instance: %w", err)
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+	if rows == 0 {
+		return fmt.Errorf("deployment instance not found")
+	}
+
+	return nil
+}
+
+// UpsertDeploymentInstance creates or updates a deployment instance record.
+func (s *Store) UpsertDeploymentInstance(ctx context.Context, di *DeploymentInstance) error {
+	if di.ID == "" {
+		di.ID = uuid.New().String()
+	}
+
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO deployment_instances (id, deployment_id, instance_id, status, started_at, completed_at, error_message)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT (deployment_id, instance_id) DO UPDATE SET
+			status = excluded.status,
+			started_at = COALESCE(deployment_instances.started_at, excluded.started_at),
+			completed_at = excluded.completed_at,
+			error_message = excluded.error_message
+	`,
+		di.ID, di.DeploymentID, di.InstanceID, di.Status,
+		NullTime(di.StartedAt), NullTime(di.CompletedAt), NullString(di.ErrorMessage),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to upsert deployment instance: %w", err)
+	}
+
+	return nil
+}
+
+// DeleteDeploymentInstances deletes all instance records for a deployment.
+func (s *Store) DeleteDeploymentInstances(ctx context.Context, deploymentID string) error {
+	_, err := s.db.ExecContext(ctx, `
+		DELETE FROM deployment_instances WHERE deployment_id = ?
+	`, deploymentID)
+	if err != nil {
+		return fmt.Errorf("failed to delete deployment instances: %w", err)
+	}
+
+	return nil
+}

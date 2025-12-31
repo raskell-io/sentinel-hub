@@ -785,3 +785,100 @@ func TestIntegration_DeploymentUpdatesInstanceConfig(t *testing.T) {
 		t.Errorf("CurrentConfigVersion = %v, want 1", updatedInst.CurrentConfigVersion)
 	}
 }
+
+func TestIntegration_InstanceResultsPersistAfterCompletion(t *testing.T) {
+	env := setupIntegrationTest(t)
+	ctx := context.Background()
+
+	cfg, _ := createTestConfig(t, env.store, "test-config", "server { listen 8080 }")
+
+	// Create multiple instances
+	instances := make([]*store.Instance, 3)
+	tokens := make([]string, 3)
+	for i := 0; i < 3; i++ {
+		instances[i] = createTestInstance(t, env.store, "inst-"+string(rune('a'+i)), nil)
+		token, cancel := simulateAgentSubscription(t, env.fleetService, instances[i].ID)
+		tokens[i] = token
+		defer cancel()
+	}
+
+	// Simulate agent responses
+	go func() {
+		time.Sleep(100 * time.Millisecond)
+		deps, _ := env.store.ListDeployments(ctx, store.ListDeploymentsOptions{})
+		if len(deps) > 0 {
+			// First instance succeeds, second fails, third succeeds
+			simulateAgentDeploymentResponse(env.fleetService, tokens[0], instances[0].ID, deps[0].ID, true, 50*time.Millisecond)
+			simulateAgentDeploymentResponse(env.fleetService, tokens[1], instances[1].ID, deps[0].ID, false, 50*time.Millisecond)
+			simulateAgentDeploymentResponse(env.fleetService, tokens[2], instances[2].ID, deps[0].ID, true, 50*time.Millisecond)
+		}
+	}()
+
+	instanceIDs := make([]string, len(instances))
+	for i, inst := range instances {
+		instanceIDs[i] = inst.ID
+	}
+
+	dep, err := env.orchestrator.CreateDeployment(ctx, CreateDeploymentRequest{
+		ConfigID:        cfg.ID,
+		TargetInstances: instanceIDs,
+		Strategy:        store.DeploymentStrategyAllAtOnce,
+	})
+	if err != nil {
+		t.Fatalf("CreateDeployment failed: %v", err)
+	}
+
+	// Wait for deployment to complete (will fail due to one instance failing)
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		status, _ := env.orchestrator.GetDeploymentStatus(ctx, dep.ID)
+		if status != nil && (status.Deployment.Status == store.DeploymentStatusCompleted ||
+			status.Deployment.Status == store.DeploymentStatusFailed) {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	// Wait a bit more to ensure runner is cleaned up
+	time.Sleep(200 * time.Millisecond)
+
+	// Now query status again - runner should be gone, results should come from DB
+	status, err := env.orchestrator.GetDeploymentStatus(ctx, dep.ID)
+	if err != nil {
+		t.Fatalf("GetDeploymentStatus failed: %v", err)
+	}
+
+	// Verify instance results are available from DB
+	if len(status.InstanceResults) != 3 {
+		t.Errorf("InstanceResults count = %d, want 3 (should be persisted in DB)", len(status.InstanceResults))
+	}
+
+	// Verify specific instance statuses
+	for _, inst := range instances {
+		result, ok := status.InstanceResults[inst.ID]
+		if !ok {
+			t.Errorf("Missing result for instance %s", inst.ID)
+			continue
+		}
+
+		// Instance 1 (index 1) should have failed
+		if inst.ID == instances[1].ID {
+			if result.Status != string(store.DeploymentInstanceStatusFailed) {
+				t.Errorf("Instance %s status = %q, want %q", inst.ID, result.Status, store.DeploymentInstanceStatusFailed)
+			}
+		} else {
+			if result.Status != string(store.DeploymentInstanceStatusCompleted) {
+				t.Errorf("Instance %s status = %q, want %q", inst.ID, result.Status, store.DeploymentInstanceStatusCompleted)
+			}
+		}
+	}
+
+	// Also verify directly from store
+	dbInstances, err := env.store.ListDeploymentInstances(ctx, dep.ID)
+	if err != nil {
+		t.Fatalf("ListDeploymentInstances failed: %v", err)
+	}
+	if len(dbInstances) != 3 {
+		t.Errorf("DB instance count = %d, want 3", len(dbInstances))
+	}
+}
