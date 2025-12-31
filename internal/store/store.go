@@ -16,6 +16,9 @@ import (
 //go:embed migrations/001_initial_schema.sql
 var initialSchema string
 
+//go:embed migrations/002_user_sessions.sql
+var userSessionsSchema string
+
 // Store provides database operations for the Hub.
 type Store struct {
 	db *sql.DB
@@ -58,10 +61,22 @@ func (s *Store) Close() error {
 
 // migrate runs database migrations.
 func (s *Store) migrate() error {
-	_, err := s.db.Exec(initialSchema)
-	if err != nil {
-		return fmt.Errorf("failed to execute schema: %w", err)
+	// Run all migrations in order
+	migrations := []struct {
+		name string
+		sql  string
+	}{
+		{"001_initial_schema", initialSchema},
+		{"002_user_sessions", userSessionsSchema},
 	}
+
+	for _, m := range migrations {
+		_, err := s.db.Exec(m.sql)
+		if err != nil {
+			return fmt.Errorf("failed to execute migration %s: %w", m.name, err)
+		}
+	}
+
 	return nil
 }
 
@@ -908,4 +923,405 @@ func (s *Store) DeleteDeploymentInstances(ctx context.Context, deploymentID stri
 	}
 
 	return nil
+}
+
+// ============================================
+// User Operations
+// ============================================
+
+// CreateUser creates a new user.
+func (s *Store) CreateUser(ctx context.Context, user *User) error {
+	if user.ID == "" {
+		user.ID = uuid.New().String()
+	}
+	user.CreatedAt = time.Now().UTC()
+
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO users (id, email, name, role, password_hash, oidc_subject, created_at, last_login_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+	`,
+		user.ID, user.Email, user.Name, user.Role,
+		NullString(user.PasswordHash), NullString(user.OIDCSubject),
+		user.CreatedAt, NullTime(user.LastLoginAt),
+	)
+	if err != nil {
+		if strings.Contains(err.Error(), "UNIQUE constraint failed") {
+			return fmt.Errorf("user with this email already exists")
+		}
+		return fmt.Errorf("failed to create user: %w", err)
+	}
+
+	return nil
+}
+
+// GetUser retrieves a user by ID.
+func (s *Store) GetUser(ctx context.Context, id string) (*User, error) {
+	var user User
+	var passwordHash, oidcSubject sql.NullString
+	var lastLoginAt sql.NullTime
+
+	err := s.db.QueryRowContext(ctx, `
+		SELECT id, email, name, role, password_hash, oidc_subject, created_at, last_login_at
+		FROM users WHERE id = ?
+	`, id).Scan(
+		&user.ID, &user.Email, &user.Name, &user.Role,
+		&passwordHash, &oidcSubject, &user.CreatedAt, &lastLoginAt,
+	)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get user: %w", err)
+	}
+
+	user.PasswordHash = StringPtr(passwordHash)
+	user.OIDCSubject = StringPtr(oidcSubject)
+	user.LastLoginAt = TimePtr(lastLoginAt)
+
+	return &user, nil
+}
+
+// GetUserByEmail retrieves a user by email.
+func (s *Store) GetUserByEmail(ctx context.Context, email string) (*User, error) {
+	var user User
+	var passwordHash, oidcSubject sql.NullString
+	var lastLoginAt sql.NullTime
+
+	err := s.db.QueryRowContext(ctx, `
+		SELECT id, email, name, role, password_hash, oidc_subject, created_at, last_login_at
+		FROM users WHERE email = ?
+	`, email).Scan(
+		&user.ID, &user.Email, &user.Name, &user.Role,
+		&passwordHash, &oidcSubject, &user.CreatedAt, &lastLoginAt,
+	)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get user by email: %w", err)
+	}
+
+	user.PasswordHash = StringPtr(passwordHash)
+	user.OIDCSubject = StringPtr(oidcSubject)
+	user.LastLoginAt = TimePtr(lastLoginAt)
+
+	return &user, nil
+}
+
+// ListUsers retrieves all users with optional filtering.
+func (s *Store) ListUsers(ctx context.Context, opts ListUsersOptions) ([]User, error) {
+	query := `
+		SELECT id, email, name, role, password_hash, oidc_subject, created_at, last_login_at
+		FROM users
+		WHERE 1=1
+	`
+	args := []interface{}{}
+
+	if opts.Role != "" {
+		query += " AND role = ?"
+		args = append(args, opts.Role)
+	}
+
+	query += " ORDER BY email ASC"
+
+	if opts.Limit > 0 {
+		query += fmt.Sprintf(" LIMIT %d", opts.Limit)
+		if opts.Offset > 0 {
+			query += fmt.Sprintf(" OFFSET %d", opts.Offset)
+		}
+	}
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list users: %w", err)
+	}
+	defer rows.Close()
+
+	var users []User
+	for rows.Next() {
+		var user User
+		var passwordHash, oidcSubject sql.NullString
+		var lastLoginAt sql.NullTime
+
+		err := rows.Scan(
+			&user.ID, &user.Email, &user.Name, &user.Role,
+			&passwordHash, &oidcSubject, &user.CreatedAt, &lastLoginAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan user: %w", err)
+		}
+
+		user.PasswordHash = StringPtr(passwordHash)
+		user.OIDCSubject = StringPtr(oidcSubject)
+		user.LastLoginAt = TimePtr(lastLoginAt)
+
+		users = append(users, user)
+	}
+
+	return users, rows.Err()
+}
+
+// UpdateUser updates an existing user.
+func (s *Store) UpdateUser(ctx context.Context, user *User) error {
+	result, err := s.db.ExecContext(ctx, `
+		UPDATE users SET
+			email = ?, name = ?, role = ?, password_hash = ?, oidc_subject = ?
+		WHERE id = ?
+	`,
+		user.Email, user.Name, user.Role,
+		NullString(user.PasswordHash), NullString(user.OIDCSubject),
+		user.ID,
+	)
+	if err != nil {
+		if strings.Contains(err.Error(), "UNIQUE constraint failed") {
+			return fmt.Errorf("user with this email already exists")
+		}
+		return fmt.Errorf("failed to update user: %w", err)
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+	if rows == 0 {
+		return fmt.Errorf("user not found")
+	}
+
+	return nil
+}
+
+// DeleteUser deletes a user by ID.
+func (s *Store) DeleteUser(ctx context.Context, id string) error {
+	result, err := s.db.ExecContext(ctx, `DELETE FROM users WHERE id = ?`, id)
+	if err != nil {
+		return fmt.Errorf("failed to delete user: %w", err)
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+	if rows == 0 {
+		return fmt.Errorf("user not found")
+	}
+
+	return nil
+}
+
+// UpdateUserLastLogin updates the last_login_at timestamp for a user.
+func (s *Store) UpdateUserLastLogin(ctx context.Context, id string) error {
+	now := time.Now().UTC()
+	_, err := s.db.ExecContext(ctx, `
+		UPDATE users SET last_login_at = ? WHERE id = ?
+	`, now, id)
+	if err != nil {
+		return fmt.Errorf("failed to update last login: %w", err)
+	}
+	return nil
+}
+
+// CountUsers returns the total number of users.
+func (s *Store) CountUsers(ctx context.Context) (int, error) {
+	var count int
+	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM users`).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("failed to count users: %w", err)
+	}
+	return count, nil
+}
+
+// ============================================
+// User Session Operations
+// ============================================
+
+// CreateUserSession creates a new user session.
+func (s *Store) CreateUserSession(ctx context.Context, session *UserSession) error {
+	if session.ID == "" {
+		session.ID = uuid.New().String()
+	}
+	session.CreatedAt = time.Now().UTC()
+
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO user_sessions (id, user_id, refresh_token_hash, created_at, expires_at, revoked_at, ip_address, user_agent)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+	`,
+		session.ID, session.UserID, session.RefreshTokenHash,
+		session.CreatedAt, session.ExpiresAt, NullTime(session.RevokedAt),
+		NullString(session.IPAddress), NullString(session.UserAgent),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create user session: %w", err)
+	}
+
+	return nil
+}
+
+// GetUserSessionByTokenHash retrieves a session by refresh token hash.
+func (s *Store) GetUserSessionByTokenHash(ctx context.Context, tokenHash string) (*UserSession, error) {
+	var session UserSession
+	var revokedAt sql.NullTime
+	var ipAddress, userAgent sql.NullString
+
+	err := s.db.QueryRowContext(ctx, `
+		SELECT id, user_id, refresh_token_hash, created_at, expires_at, revoked_at, ip_address, user_agent
+		FROM user_sessions WHERE refresh_token_hash = ?
+	`, tokenHash).Scan(
+		&session.ID, &session.UserID, &session.RefreshTokenHash,
+		&session.CreatedAt, &session.ExpiresAt, &revokedAt,
+		&ipAddress, &userAgent,
+	)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get user session: %w", err)
+	}
+
+	session.RevokedAt = TimePtr(revokedAt)
+	session.IPAddress = StringPtr(ipAddress)
+	session.UserAgent = StringPtr(userAgent)
+
+	return &session, nil
+}
+
+// RevokeUserSession marks a session as revoked.
+func (s *Store) RevokeUserSession(ctx context.Context, id string) error {
+	now := time.Now().UTC()
+	_, err := s.db.ExecContext(ctx, `
+		UPDATE user_sessions SET revoked_at = ? WHERE id = ?
+	`, now, id)
+	if err != nil {
+		return fmt.Errorf("failed to revoke session: %w", err)
+	}
+	return nil
+}
+
+// RevokeAllUserSessions revokes all sessions for a user.
+func (s *Store) RevokeAllUserSessions(ctx context.Context, userID string) error {
+	now := time.Now().UTC()
+	_, err := s.db.ExecContext(ctx, `
+		UPDATE user_sessions SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL
+	`, now, userID)
+	if err != nil {
+		return fmt.Errorf("failed to revoke all sessions: %w", err)
+	}
+	return nil
+}
+
+// CleanupExpiredSessions deletes sessions that have expired.
+func (s *Store) CleanupExpiredSessions(ctx context.Context) (int64, error) {
+	now := time.Now().UTC()
+	result, err := s.db.ExecContext(ctx, `
+		DELETE FROM user_sessions WHERE expires_at < ?
+	`, now)
+	if err != nil {
+		return 0, fmt.Errorf("failed to cleanup expired sessions: %w", err)
+	}
+	return result.RowsAffected()
+}
+
+// ============================================
+// Audit Log Operations
+// ============================================
+
+// CreateAuditLog creates a new audit log entry.
+func (s *Store) CreateAuditLog(ctx context.Context, log *AuditLog) error {
+	if log.ID == "" {
+		log.ID = uuid.New().String()
+	}
+	log.Timestamp = time.Now().UTC()
+
+	var detailsStr string
+	if log.Details != nil {
+		detailsStr = string(log.Details)
+	}
+
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO audit_logs (id, timestamp, user_id, action, resource_type, resource_id, details, ip_address)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+	`,
+		log.ID, log.Timestamp, NullString(log.UserID), log.Action,
+		log.ResourceType, NullString(log.ResourceID), detailsStr, NullString(log.IPAddress),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create audit log: %w", err)
+	}
+
+	return nil
+}
+
+// ListAuditLogs retrieves audit logs with optional filtering.
+func (s *Store) ListAuditLogs(ctx context.Context, opts ListAuditLogsOptions) ([]AuditLog, error) {
+	query := `
+		SELECT id, timestamp, user_id, action, resource_type, resource_id, details, ip_address
+		FROM audit_logs
+		WHERE 1=1
+	`
+	args := []interface{}{}
+
+	if opts.UserID != "" {
+		query += " AND user_id = ?"
+		args = append(args, opts.UserID)
+	}
+	if opts.Action != "" {
+		query += " AND action = ?"
+		args = append(args, opts.Action)
+	}
+	if opts.ResourceType != "" {
+		query += " AND resource_type = ?"
+		args = append(args, opts.ResourceType)
+	}
+	if opts.ResourceID != "" {
+		query += " AND resource_id = ?"
+		args = append(args, opts.ResourceID)
+	}
+	if opts.Since != nil {
+		query += " AND timestamp >= ?"
+		args = append(args, *opts.Since)
+	}
+	if opts.Until != nil {
+		query += " AND timestamp <= ?"
+		args = append(args, *opts.Until)
+	}
+
+	query += " ORDER BY timestamp DESC"
+
+	if opts.Limit > 0 {
+		query += fmt.Sprintf(" LIMIT %d", opts.Limit)
+		if opts.Offset > 0 {
+			query += fmt.Sprintf(" OFFSET %d", opts.Offset)
+		}
+	}
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list audit logs: %w", err)
+	}
+	defer rows.Close()
+
+	var logs []AuditLog
+	for rows.Next() {
+		var log AuditLog
+		var userID, resourceID, ipAddress sql.NullString
+		var details string
+
+		err := rows.Scan(
+			&log.ID, &log.Timestamp, &userID, &log.Action,
+			&log.ResourceType, &resourceID, &details, &ipAddress,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan audit log: %w", err)
+		}
+
+		log.UserID = StringPtr(userID)
+		log.ResourceID = StringPtr(resourceID)
+		log.IPAddress = StringPtr(ipAddress)
+		if details != "" {
+			log.Details = json.RawMessage(details)
+		}
+
+		logs = append(logs, log)
+	}
+
+	return logs, rows.Err()
 }

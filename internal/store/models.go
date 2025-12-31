@@ -163,12 +163,43 @@ type AuditLog struct {
 
 // AgentSession represents an active agent session.
 type AgentSession struct {
-	ID         string    `json:"id"`
-	InstanceID string    `json:"instance_id"`
-	TokenHash  string    `json:"-"`
-	CreatedAt  time.Time `json:"created_at"`
-	ExpiresAt  time.Time `json:"expires_at"`
+	ID         string     `json:"id"`
+	InstanceID string     `json:"instance_id"`
+	TokenHash  string     `json:"-"`
+	CreatedAt  time.Time  `json:"created_at"`
+	ExpiresAt  time.Time  `json:"expires_at"`
 	LastUsedAt *time.Time `json:"last_used_at,omitempty"`
+}
+
+// UserSession represents an active user session (for JWT refresh tokens).
+type UserSession struct {
+	ID               string     `json:"id"`
+	UserID           string     `json:"user_id"`
+	RefreshTokenHash string     `json:"-"`
+	CreatedAt        time.Time  `json:"created_at"`
+	ExpiresAt        time.Time  `json:"expires_at"`
+	RevokedAt        *time.Time `json:"revoked_at,omitempty"`
+	IPAddress        *string    `json:"ip_address,omitempty"`
+	UserAgent        *string    `json:"user_agent,omitempty"`
+}
+
+// ListUsersOptions contains options for listing users.
+type ListUsersOptions struct {
+	Role   UserRole
+	Limit  int
+	Offset int
+}
+
+// ListAuditLogsOptions contains options for listing audit logs.
+type ListAuditLogsOptions struct {
+	UserID       string
+	Action       string
+	ResourceType string
+	ResourceID   string
+	Since        *time.Time
+	Until        *time.Time
+	Limit        int
+	Offset       int
 }
 
 // NullString converts a *string to sql.NullString for database operations.

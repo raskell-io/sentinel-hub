@@ -7,9 +7,12 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strconv"
 	"testing"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/raskell-io/sentinel-hub/internal/fleet"
+	hubgrpc "github.com/raskell-io/sentinel-hub/internal/grpc"
 	"github.com/raskell-io/sentinel-hub/internal/store"
 )
 
@@ -1146,5 +1149,515 @@ func TestErrorResponse_Structure(t *testing.T) {
 	}
 	if decoded.Details != resp.Details {
 		t.Errorf("Details = %q, want %q", decoded.Details, resp.Details)
+	}
+}
+
+// ============================================
+// Deployment Handler Tests with Orchestrator
+// ============================================
+
+// newMockFleetService creates a FleetService for testing.
+func newMockFleetService(s *store.Store) *hubgrpc.FleetService {
+	return hubgrpc.NewFleetService(s)
+}
+
+// newTestOrchestrator creates an Orchestrator for testing.
+func newTestOrchestrator(s *store.Store, fs *hubgrpc.FleetService) *fleet.Orchestrator {
+	return fleet.NewOrchestrator(s, fs)
+}
+
+// setupTestHandlerWithOrchestrator creates a Handler with a real orchestrator.
+func setupTestHandlerWithOrchestrator(t *testing.T) (*Handler, *store.Store) {
+	t.Helper()
+	s := setupTestStore(t)
+
+	// Create FleetService for the orchestrator
+	fs := newMockFleetService(s)
+
+	// Create orchestrator
+	o := newTestOrchestrator(s, fs)
+
+	h := NewHandler(s, o)
+	return h, s
+}
+
+func TestHandler_GetDeployment(t *testing.T) {
+	h, s := setupTestHandlerWithOrchestrator(t)
+	ctx := context.Background()
+
+	// Create a config
+	config := &store.Config{
+		ID:             "test-config",
+		Name:           "Test Config",
+		CurrentVersion: 1,
+	}
+	s.CreateConfig(ctx, config)
+	s.CreateConfigVersion(ctx, &store.ConfigVersion{
+		ID:          "test-config-v1",
+		ConfigID:    "test-config",
+		Version:     1,
+		Content:     "test content",
+		ContentHash: "abc123abc123abc123abc123abc123abc123abc123abc123abc123abc123abc1",
+	})
+
+	// Create an instance
+	instance := &store.Instance{
+		ID:       "test-instance",
+		Name:     "Test Instance",
+		Hostname: "localhost",
+		Status:   store.InstanceStatusOnline,
+	}
+	s.CreateInstance(ctx, instance)
+
+	// Create a deployment directly in the store
+	deployment := &store.Deployment{
+		ID:              "test-deployment",
+		ConfigID:        "test-config",
+		ConfigVersion:   1,
+		TargetInstances: []string{"test-instance"},
+		Strategy:        store.DeploymentStrategyAllAtOnce,
+		Status:          store.DeploymentStatusCompleted,
+	}
+	s.CreateDeployment(ctx, deployment)
+
+	req := httptest.NewRequest("GET", "/api/v1/deployments/test-deployment", nil)
+	req = chiContext(req, map[string]string{"id": "test-deployment"})
+	w := httptest.NewRecorder()
+
+	h.GetDeployment(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("status = %d, want %d, body: %s", w.Code, http.StatusOK, w.Body.String())
+	}
+}
+
+func TestHandler_GetDeployment_NotFound(t *testing.T) {
+	h, _ := setupTestHandlerWithOrchestrator(t)
+
+	req := httptest.NewRequest("GET", "/api/v1/deployments/non-existent", nil)
+	req = chiContext(req, map[string]string{"id": "non-existent"})
+	w := httptest.NewRecorder()
+
+	h.GetDeployment(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("status = %d, want %d", w.Code, http.StatusNotFound)
+	}
+}
+
+func TestHandler_CancelDeployment(t *testing.T) {
+	h, s := setupTestHandlerWithOrchestrator(t)
+	ctx := context.Background()
+
+	// Create a config
+	config := &store.Config{
+		ID:             "test-config",
+		Name:           "Test Config",
+		CurrentVersion: 1,
+	}
+	s.CreateConfig(ctx, config)
+	s.CreateConfigVersion(ctx, &store.ConfigVersion{
+		ID:          "test-config-v1",
+		ConfigID:    "test-config",
+		Version:     1,
+		Content:     "test content",
+		ContentHash: "abc123abc123abc123abc123abc123abc123abc123abc123abc123abc123abc1",
+	})
+
+	// Create an in-progress deployment
+	deployment := &store.Deployment{
+		ID:              "cancel-test-deployment",
+		ConfigID:        "test-config",
+		ConfigVersion:   1,
+		TargetInstances: []string{"test-instance"},
+		Strategy:        store.DeploymentStrategyRolling,
+		Status:          store.DeploymentStatusInProgress,
+	}
+	s.CreateDeployment(ctx, deployment)
+
+	req := httptest.NewRequest("POST", "/api/v1/deployments/cancel-test-deployment/cancel", nil)
+	req = chiContext(req, map[string]string{"id": "cancel-test-deployment"})
+	w := httptest.NewRecorder()
+
+	h.CancelDeployment(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("status = %d, want %d, body: %s", w.Code, http.StatusOK, w.Body.String())
+	}
+}
+
+func TestHandler_CancelDeployment_NotFound(t *testing.T) {
+	h, _ := setupTestHandlerWithOrchestrator(t)
+
+	req := httptest.NewRequest("POST", "/api/v1/deployments/non-existent/cancel", nil)
+	req = chiContext(req, map[string]string{"id": "non-existent"})
+	w := httptest.NewRecorder()
+
+	h.CancelDeployment(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want %d", w.Code, http.StatusBadRequest)
+	}
+}
+
+func TestHandler_CreateDeployment(t *testing.T) {
+	h, s := setupTestHandlerWithOrchestrator(t)
+	ctx := context.Background()
+
+	// Create a config
+	config := &store.Config{
+		ID:             "deploy-config",
+		Name:           "Deploy Config",
+		CurrentVersion: 1,
+	}
+	s.CreateConfig(ctx, config)
+	s.CreateConfigVersion(ctx, &store.ConfigVersion{
+		ID:          "deploy-config-v1",
+		ConfigID:    "deploy-config",
+		Version:     1,
+		Content:     "test content",
+		ContentHash: "abc123abc123abc123abc123abc123abc123abc123abc123abc123abc123abc1",
+	})
+
+	// Create an instance
+	instance := &store.Instance{
+		ID:       "deploy-instance",
+		Name:     "Deploy Instance",
+		Hostname: "localhost",
+		Status:   store.InstanceStatusOnline,
+	}
+	s.CreateInstance(ctx, instance)
+
+	body := `{"config_id": "deploy-config", "target_instances": ["deploy-instance"], "strategy": "all_at_once"}`
+	req := httptest.NewRequest("POST", "/api/v1/deployments", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	h.CreateDeployment(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Errorf("status = %d, want %d, body: %s", w.Code, http.StatusCreated, w.Body.String())
+	}
+
+	var deployment store.Deployment
+	json.NewDecoder(w.Body).Decode(&deployment)
+
+	if deployment.ConfigID != "deploy-config" {
+		t.Errorf("ConfigID = %q, want %q", deployment.ConfigID, "deploy-config")
+	}
+}
+
+func TestHandler_CreateDeployment_WithLabels(t *testing.T) {
+	h, s := setupTestHandlerWithOrchestrator(t)
+	ctx := context.Background()
+
+	// Create a config
+	config := &store.Config{
+		ID:             "label-config",
+		Name:           "Label Config",
+		CurrentVersion: 1,
+	}
+	s.CreateConfig(ctx, config)
+	s.CreateConfigVersion(ctx, &store.ConfigVersion{
+		ID:          "label-config-v1",
+		ConfigID:    "label-config",
+		Version:     1,
+		Content:     "test content",
+		ContentHash: "abc123abc123abc123abc123abc123abc123abc123abc123abc123abc123abc1",
+	})
+
+	// Create instances with labels
+	for i := 0; i < 3; i++ {
+		instance := &store.Instance{
+			ID:       "label-instance-" + string(rune('a'+i)),
+			Name:     "Label Instance",
+			Hostname: "localhost",
+			Status:   store.InstanceStatusOnline,
+			Labels:   map[string]string{"env": "prod"},
+		}
+		s.CreateInstance(ctx, instance)
+	}
+
+	body := `{"config_id": "label-config", "target_labels": {"env": "prod"}, "strategy": "rolling", "batch_size": 1}`
+	req := httptest.NewRequest("POST", "/api/v1/deployments", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	h.CreateDeployment(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Errorf("status = %d, want %d, body: %s", w.Code, http.StatusCreated, w.Body.String())
+	}
+}
+
+func TestHandler_CreateDeployment_ConfigNotFound(t *testing.T) {
+	h, _ := setupTestHandlerWithOrchestrator(t)
+
+	body := `{"config_id": "non-existent", "target_instances": ["instance-1"]}`
+	req := httptest.NewRequest("POST", "/api/v1/deployments", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	h.CreateDeployment(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want %d", w.Code, http.StatusBadRequest)
+	}
+}
+
+func TestHandler_CreateDeployment_WithVersion(t *testing.T) {
+	h, s := setupTestHandlerWithOrchestrator(t)
+	ctx := context.Background()
+
+	// Create a config with multiple versions
+	config := &store.Config{
+		ID:             "versioned-config",
+		Name:           "Versioned Config",
+		CurrentVersion: 2,
+	}
+	s.CreateConfig(ctx, config)
+	s.CreateConfigVersion(ctx, &store.ConfigVersion{
+		ID:          "versioned-config-v1",
+		ConfigID:    "versioned-config",
+		Version:     1,
+		Content:     "version 1",
+		ContentHash: "abc123abc123abc123abc123abc123abc123abc123abc123abc123abc123abc1",
+	})
+	s.CreateConfigVersion(ctx, &store.ConfigVersion{
+		ID:          "versioned-config-v2",
+		ConfigID:    "versioned-config",
+		Version:     2,
+		Content:     "version 2",
+		ContentHash: "def456def456def456def456def456def456def456def456def456def456def4",
+	})
+
+	// Create an instance
+	instance := &store.Instance{
+		ID:       "versioned-instance",
+		Name:     "Versioned Instance",
+		Hostname: "localhost",
+		Status:   store.InstanceStatusOnline,
+	}
+	s.CreateInstance(ctx, instance)
+
+	// Deploy specific version
+	body := `{"config_id": "versioned-config", "config_version": 1, "target_instances": ["versioned-instance"]}`
+	req := httptest.NewRequest("POST", "/api/v1/deployments", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	h.CreateDeployment(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Errorf("status = %d, want %d, body: %s", w.Code, http.StatusCreated, w.Body.String())
+	}
+
+	var deployment store.Deployment
+	json.NewDecoder(w.Body).Decode(&deployment)
+
+	if deployment.ConfigVersion != 1 {
+		t.Errorf("ConfigVersion = %d, want 1", deployment.ConfigVersion)
+	}
+}
+
+// ============================================
+// Additional Error Path Tests
+// ============================================
+
+func TestHandler_UpdateInstance_InvalidStatus(t *testing.T) {
+	h, s := setupTestHandler(t)
+	ctx := context.Background()
+
+	// Create an instance
+	s.CreateInstance(ctx, &store.Instance{
+		ID:       "update-status-test",
+		Name:     "Update Status Test",
+		Hostname: "localhost",
+		Status:   store.InstanceStatusOnline,
+	})
+
+	// Try to update with invalid status (empty body is valid, so use partial update)
+	body := `{"status": "invalid_status"}`
+	req := httptest.NewRequest("PUT", "/api/v1/instances/update-status-test", bytes.NewBufferString(body))
+	req = chiContext(req, map[string]string{"id": "update-status-test"})
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	h.UpdateInstance(w, req)
+
+	// Should still succeed as status is just a string field
+	if w.Code != http.StatusOK {
+		t.Errorf("status = %d, want %d", w.Code, http.StatusOK)
+	}
+}
+
+func TestHandler_ListInstances_InvalidLimit(t *testing.T) {
+	h, _ := setupTestHandler(t)
+
+	req := httptest.NewRequest("GET", "/api/v1/instances?limit=invalid", nil)
+	w := httptest.NewRecorder()
+
+	h.ListInstances(w, req)
+
+	// Should use default limit and succeed
+	if w.Code != http.StatusOK {
+		t.Errorf("status = %d, want %d", w.Code, http.StatusOK)
+	}
+}
+
+func TestHandler_ListInstances_InvalidOffset(t *testing.T) {
+	h, _ := setupTestHandler(t)
+
+	req := httptest.NewRequest("GET", "/api/v1/instances?offset=invalid", nil)
+	w := httptest.NewRecorder()
+
+	h.ListInstances(w, req)
+
+	// Should use default offset and succeed
+	if w.Code != http.StatusOK {
+		t.Errorf("status = %d, want %d", w.Code, http.StatusOK)
+	}
+}
+
+func TestHandler_ListConfigs_InvalidLimit(t *testing.T) {
+	h, _ := setupTestHandler(t)
+
+	req := httptest.NewRequest("GET", "/api/v1/configs?limit=invalid", nil)
+	w := httptest.NewRecorder()
+
+	h.ListConfigs(w, req)
+
+	// Should use default limit and succeed
+	if w.Code != http.StatusOK {
+		t.Errorf("status = %d, want %d", w.Code, http.StatusOK)
+	}
+}
+
+func TestHandler_ListDeployments_InvalidLimit(t *testing.T) {
+	h, _ := setupTestHandler(t)
+
+	req := httptest.NewRequest("GET", "/api/v1/deployments?limit=invalid", nil)
+	w := httptest.NewRecorder()
+
+	h.ListDeployments(w, req)
+
+	// Should use default limit and succeed
+	if w.Code != http.StatusOK {
+		t.Errorf("status = %d, want %d", w.Code, http.StatusOK)
+	}
+}
+
+func TestHandler_GetConfig_WithVersions(t *testing.T) {
+	h, s := setupTestHandler(t)
+	ctx := context.Background()
+
+	// Create a config
+	config := &store.Config{
+		ID:             "multi-version-config",
+		Name:           "Multi Version Config",
+		CurrentVersion: 2,
+	}
+	s.CreateConfig(ctx, config)
+
+	// Create multiple versions
+	for i := 1; i <= 3; i++ {
+		s.CreateConfigVersion(ctx, &store.ConfigVersion{
+			ID:          "multi-version-config-v" + strconv.Itoa(i),
+			ConfigID:    "multi-version-config",
+			Version:     i,
+			Content:     "content v" + strconv.Itoa(i),
+			ContentHash: "hash" + strconv.Itoa(i) + "hash" + strconv.Itoa(i) + "hash" + strconv.Itoa(i),
+		})
+	}
+
+	req := httptest.NewRequest("GET", "/api/v1/configs/multi-version-config", nil)
+	req = chiContext(req, map[string]string{"id": "multi-version-config"})
+	w := httptest.NewRecorder()
+
+	h.GetConfig(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("status = %d, want %d", w.Code, http.StatusOK)
+	}
+
+	var resp GetConfigResponse
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	// GetConfig returns the latest version, which is version 3
+	if resp.CurrentVersion == nil {
+		t.Fatal("CurrentVersion should not be nil")
+	}
+	if resp.CurrentVersion.Version != 3 {
+		t.Errorf("CurrentVersion.Version = %d, want 3", resp.CurrentVersion.Version)
+	}
+	// The config's internal CurrentVersion field reflects what was set at creation (2)
+	// but GetConfig returns the latest version from the database
+}
+
+func TestHandler_UpdateConfig_EmptyBody(t *testing.T) {
+	h, s := setupTestHandler(t)
+	ctx := context.Background()
+
+	// Create a config
+	config := &store.Config{
+		ID:             "empty-update-config",
+		Name:           "Empty Update Config",
+		CurrentVersion: 1,
+	}
+	s.CreateConfig(ctx, config)
+	s.CreateConfigVersion(ctx, &store.ConfigVersion{
+		ID:          "empty-update-config-v1",
+		ConfigID:    "empty-update-config",
+		Version:     1,
+		Content:     "original content",
+		ContentHash: "originalhashoriginalhashoriginalhashoriginalhashoriginalhashori",
+	})
+
+	// Empty update (should still work - no changes)
+	body := `{}`
+	req := httptest.NewRequest("PUT", "/api/v1/configs/empty-update-config", bytes.NewBufferString(body))
+	req = chiContext(req, map[string]string{"id": "empty-update-config"})
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	h.UpdateConfig(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("status = %d, want %d, body: %s", w.Code, http.StatusOK, w.Body.String())
+	}
+}
+
+func TestHandler_ListConfigVersions_WithPagination(t *testing.T) {
+	h, s := setupTestHandler(t)
+	ctx := context.Background()
+
+	// Create a config with multiple versions
+	config := &store.Config{
+		ID:             "paginated-versions-config",
+		Name:           "Paginated Versions Config",
+		CurrentVersion: 5,
+	}
+	s.CreateConfig(ctx, config)
+
+	for i := 1; i <= 5; i++ {
+		s.CreateConfigVersion(ctx, &store.ConfigVersion{
+			ID:          "paginated-versions-config-v" + strconv.Itoa(i),
+			ConfigID:    "paginated-versions-config",
+			Version:     i,
+			Content:     "content v" + strconv.Itoa(i),
+			ContentHash: "hash" + strconv.Itoa(i) + "hash" + strconv.Itoa(i) + "hash" + strconv.Itoa(i),
+		})
+	}
+
+	req := httptest.NewRequest("GET", "/api/v1/configs/paginated-versions-config/versions?limit=2&offset=1", nil)
+	req = chiContext(req, map[string]string{"id": "paginated-versions-config"})
+	w := httptest.NewRecorder()
+
+	h.ListConfigVersions(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("status = %d, want %d", w.Code, http.StatusOK)
 	}
 }

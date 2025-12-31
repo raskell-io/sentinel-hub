@@ -9,6 +9,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/raskell-io/sentinel-hub/internal/auth"
 	"github.com/raskell-io/sentinel-hub/internal/fleet"
 	"github.com/raskell-io/sentinel-hub/internal/store"
 	"github.com/rs/zerolog/log"
@@ -44,6 +45,39 @@ func writeJSON(w http.ResponseWriter, status int, data interface{}) {
 // writeError writes an error response.
 func writeError(w http.ResponseWriter, status int, code, message string) {
 	writeJSON(w, status, ErrorResponse{Error: message, Code: code})
+}
+
+// auditLog creates an audit log entry for write operations.
+func (h *Handler) auditLog(r *http.Request, action, resourceType, resourceID string, details interface{}) {
+	user := auth.GetUserFromContext(r.Context())
+	var userIDPtr *string
+	if user != nil {
+		userIDPtr = &user.ID
+	}
+
+	var detailsJSON json.RawMessage
+	if details != nil {
+		if b, err := json.Marshal(details); err == nil {
+			detailsJSON = b
+		}
+	}
+
+	auditLog := &store.AuditLog{
+		ID:           uuid.New().String(),
+		UserID:       userIDPtr,
+		Action:       action,
+		ResourceType: resourceType,
+		ResourceID:   &resourceID,
+		Details:      detailsJSON,
+	}
+
+	if err := h.store.CreateAuditLog(r.Context(), auditLog); err != nil {
+		log.Warn().Err(err).
+			Str("action", action).
+			Str("resource_type", resourceType).
+			Str("resource_id", resourceID).
+			Msg("Failed to create audit log")
+	}
 }
 
 // ============================================
@@ -152,6 +186,7 @@ func (h *Handler) CreateInstance(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.auditLog(r, "create", "instance", inst.ID, map[string]string{"name": inst.Name})
 	writeJSON(w, http.StatusCreated, inst)
 }
 
@@ -234,6 +269,7 @@ func (h *Handler) UpdateInstance(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.auditLog(r, "update", "instance", inst.ID, map[string]string{"name": inst.Name})
 	writeJSON(w, http.StatusOK, inst)
 }
 
@@ -252,6 +288,7 @@ func (h *Handler) DeleteInstance(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.auditLog(r, "delete", "instance", id, nil)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -360,6 +397,7 @@ func (h *Handler) CreateConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.auditLog(r, "create", "config", cfg.ID, map[string]string{"name": cfg.Name})
 	writeJSON(w, http.StatusCreated, CreateConfigResponse{
 		Config:  *cfg,
 		Version: *ver,
@@ -470,6 +508,10 @@ func (h *Handler) UpdateConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.auditLog(r, "update", "config", cfg.ID, map[string]interface{}{
+		"name":        cfg.Name,
+		"new_version": newVersion != nil,
+	})
 	writeJSON(w, http.StatusOK, GetConfigResponse{
 		Config:         *cfg,
 		CurrentVersion: newVersion,
@@ -491,6 +533,7 @@ func (h *Handler) DeleteConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.auditLog(r, "delete", "config", id, nil)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -603,6 +646,11 @@ func (h *Handler) RollbackConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.auditLog(r, "rollback", "config", cfg.ID, map[string]interface{}{
+		"from_version": cfg.CurrentVersion - 1,
+		"to_version":   req.Version,
+		"new_version":  newVersion.Version,
+	})
 	writeJSON(w, http.StatusOK, GetConfigResponse{
 		Config:         *cfg,
 		CurrentVersion: newVersion,
@@ -711,6 +759,11 @@ func (h *Handler) CreateDeployment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.auditLog(r, "create", "deployment", dep.ID, map[string]interface{}{
+		"config_id":        req.ConfigID,
+		"strategy":         string(strategy),
+		"target_instances": len(dep.TargetInstances),
+	})
 	writeJSON(w, http.StatusCreated, dep)
 }
 
@@ -750,6 +803,8 @@ func (h *Handler) CancelDeployment(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "CANCEL_ERROR", err.Error())
 		return
 	}
+
+	h.auditLog(r, "cancel", "deployment", id, nil)
 
 	// Get updated status
 	status, err := h.orchestrator.GetDeploymentStatus(ctx, id)

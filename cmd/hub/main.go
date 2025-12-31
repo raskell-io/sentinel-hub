@@ -12,6 +12,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/raskell-io/sentinel-hub/internal/api"
+	"github.com/raskell-io/sentinel-hub/internal/auth"
 	"github.com/raskell-io/sentinel-hub/internal/fleet"
 	hubgrpc "github.com/raskell-io/sentinel-hub/internal/grpc"
 	"github.com/raskell-io/sentinel-hub/internal/store"
@@ -97,6 +98,22 @@ func runServer(httpPort, grpcPort int, dbURL string) error {
 
 	log.Info().Msg("Database initialized successfully")
 
+	// Create auth service
+	jwtSecret := os.Getenv("HUB_JWT_SECRET")
+	if jwtSecret == "" {
+		jwtSecret = "dev-secret-change-in-production" // Default for development
+		log.Warn().Msg("HUB_JWT_SECRET not set, using insecure default (do not use in production)")
+	}
+
+	authConfig := auth.DefaultConfig()
+	authConfig.JWTSecret = jwtSecret
+	authService := auth.NewService(db, authConfig)
+
+	// Seed initial admin user if configured
+	if err := seedAdminUser(db, authService); err != nil {
+		log.Warn().Err(err).Msg("Failed to seed admin user")
+	}
+
 	// Create gRPC server
 	grpcServer := hubgrpc.NewServer(db, grpcPort)
 
@@ -116,8 +133,10 @@ func runServer(httpPort, grpcPort int, dbURL string) error {
 		}
 	}()
 
-	// Create API handler
+	// Create API handlers
 	handler := api.NewHandler(db, orchestrator)
+	authHandler := api.NewAuthHandler(authService)
+	userHandler := api.NewUserHandler(db, authService)
 
 	// Setup router
 	r := chi.NewRouter()
@@ -174,32 +193,66 @@ func runServer(httpPort, grpcPort int, dbURL string) error {
 
 	// API routes
 	r.Route("/api/v1", func(r chi.Router) {
-		// Instance management
-		r.Route("/instances", func(r chi.Router) {
-			r.Get("/", handler.ListInstances)
-			r.Post("/", handler.CreateInstance)
-			r.Get("/{id}", handler.GetInstance)
-			r.Put("/{id}", handler.UpdateInstance)
-			r.Delete("/{id}", handler.DeleteInstance)
-		})
+		// Public auth routes (no authentication required)
+		r.Post("/auth/login", authHandler.Login)
+		r.Post("/auth/refresh", authHandler.Refresh)
 
-		// Configuration management
-		r.Route("/configs", func(r chi.Router) {
-			r.Get("/", handler.ListConfigs)
-			r.Post("/", handler.CreateConfig)
-			r.Get("/{id}", handler.GetConfig)
-			r.Put("/{id}", handler.UpdateConfig)
-			r.Delete("/{id}", handler.DeleteConfig)
-			r.Get("/{id}/versions", handler.ListConfigVersions)
-			r.Post("/{id}/rollback", handler.RollbackConfig)
-		})
+		// Authenticated routes
+		r.Group(func(r chi.Router) {
+			r.Use(authService.RequireAuth())
 
-		// Deployments
-		r.Route("/deployments", func(r chi.Router) {
-			r.Get("/", handler.ListDeployments)
-			r.Post("/", handler.CreateDeployment)
-			r.Get("/{id}", handler.GetDeployment)
-			r.Post("/{id}/cancel", handler.CancelDeployment)
+			// Auth endpoints (authenticated)
+			r.Post("/auth/logout", authHandler.Logout)
+			r.Get("/auth/me", authHandler.GetCurrentUser)
+
+			// Read-only routes (all authenticated users: viewer, operator, admin)
+			r.Get("/instances", handler.ListInstances)
+			r.Get("/instances/{id}", handler.GetInstance)
+			r.Get("/configs", handler.ListConfigs)
+			r.Get("/configs/{id}", handler.GetConfig)
+			r.Get("/configs/{id}/versions", handler.ListConfigVersions)
+			r.Get("/deployments", handler.ListDeployments)
+			r.Get("/deployments/{id}", handler.GetDeployment)
+
+			// Operator+ routes (create/update resources)
+			r.Group(func(r chi.Router) {
+				r.Use(authService.RequireRole(store.UserRoleAdmin, store.UserRoleOperator))
+
+				// Instance management (operators can create/update)
+				r.Post("/instances", handler.CreateInstance)
+				r.Put("/instances/{id}", handler.UpdateInstance)
+
+				// Config management (operators can create/update)
+				r.Post("/configs", handler.CreateConfig)
+				r.Put("/configs/{id}", handler.UpdateConfig)
+				r.Post("/configs/{id}/rollback", handler.RollbackConfig)
+
+				// Deployments (operators can create/cancel)
+				r.Post("/deployments", handler.CreateDeployment)
+				r.Post("/deployments/{id}/cancel", handler.CancelDeployment)
+			})
+
+			// Admin-only routes
+			r.Group(func(r chi.Router) {
+				r.Use(authService.RequireRole(store.UserRoleAdmin))
+
+				// Delete operations
+				r.Delete("/instances/{id}", handler.DeleteInstance)
+				r.Delete("/configs/{id}", handler.DeleteConfig)
+
+				// User management
+				r.Route("/users", func(r chi.Router) {
+					r.Get("/", userHandler.ListUsers)
+					r.Post("/", userHandler.CreateUser)
+					r.Get("/{id}", userHandler.GetUser)
+					r.Put("/{id}", userHandler.UpdateUser)
+					r.Delete("/{id}", userHandler.DeleteUser)
+					r.Post("/{id}/reset-password", userHandler.ResetPassword)
+				})
+
+				// Audit logs
+				r.Get("/audit-logs", userHandler.ListAuditLogs)
+			})
 		})
 	})
 
@@ -247,5 +300,43 @@ func runServer(httpPort, grpcPort int, dbURL string) error {
 
 	<-done
 	log.Info().Msg("Server stopped")
+	return nil
+}
+
+// seedAdminUser creates an initial admin user if HUB_ADMIN_EMAIL and HUB_ADMIN_PASSWORD are set.
+func seedAdminUser(db *store.Store, authService *auth.Service) error {
+	adminEmail := os.Getenv("HUB_ADMIN_EMAIL")
+	adminPassword := os.Getenv("HUB_ADMIN_PASSWORD")
+
+	if adminEmail == "" || adminPassword == "" {
+		return nil // No admin credentials configured, skip seeding
+	}
+
+	// Check if any users exist
+	count, err := db.CountUsers(context.Background())
+	if err != nil {
+		return fmt.Errorf("failed to count users: %w", err)
+	}
+
+	if count > 0 {
+		log.Debug().Msg("Users already exist, skipping admin seeding")
+		return nil
+	}
+
+	// Create admin user
+	adminName := os.Getenv("HUB_ADMIN_NAME")
+	if adminName == "" {
+		adminName = "Admin"
+	}
+
+	_, err = authService.CreateUser(context.Background(), adminEmail, adminName, adminPassword, store.UserRoleAdmin)
+	if err != nil {
+		return fmt.Errorf("failed to create admin user: %w", err)
+	}
+
+	log.Info().
+		Str("email", adminEmail).
+		Msg("Created initial admin user")
+
 	return nil
 }
