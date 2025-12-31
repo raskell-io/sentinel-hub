@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   # Hub API Server
   hub:
@@ -20,11 +18,11 @@ services:
     volumes:
       - hub-data:/data
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:8080/api/v1/health"]
-      interval: 30s
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
+      interval: 10s
       timeout: 3s
       retries: 3
-      start_period: 5s
+      start_period: 10s
     restart: unless-stopped
 
   # Web UI
