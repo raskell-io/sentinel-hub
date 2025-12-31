@@ -209,6 +209,53 @@ export async function updateConfig(id: string, data: UpdateConfigInput) {
   return handleResponse<Config>(response);
 }
 
+export async function deleteConfig(id: string) {
+  const response = await fetch(`${API_BASE}/configs/${id}`, {
+    method: "DELETE",
+    headers: getAuthHeaders(),
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new ApiError(
+      response.status,
+      error.error?.code || "UNKNOWN_ERROR",
+      error.error?.message || response.statusText
+    );
+  }
+}
+
+export async function getConfigVersions(configId: string) {
+  const response = await fetch(`${API_BASE}/configs/${configId}/versions`, {
+    headers: getAuthHeaders(),
+  });
+  return handleResponse<{ versions: ConfigVersion[] }>(response);
+}
+
+export async function getConfigVersion(configId: string, version: number) {
+  const response = await fetch(`${API_BASE}/configs/${configId}/versions/${version}`, {
+    headers: getAuthHeaders(),
+  });
+  return handleResponse<ConfigVersion>(response);
+}
+
+export async function rollbackConfig(configId: string, version: number) {
+  const response = await fetch(`${API_BASE}/configs/${configId}/rollback`, {
+    method: "POST",
+    headers: getAuthHeaders(),
+    body: JSON.stringify({ version }),
+  });
+  return handleResponse<Config>(response);
+}
+
+export async function validateConfig(content: string) {
+  const response = await fetch(`${API_BASE}/configs/validate`, {
+    method: "POST",
+    headers: getAuthHeaders(),
+    body: JSON.stringify({ content }),
+  });
+  return handleResponse<{ valid: boolean; errors?: string[] }>(response);
+}
+
 // Deployments
 export async function listDeployments() {
   const response = await fetch(`${API_BASE}/deployments`, {
