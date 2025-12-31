@@ -975,7 +975,7 @@ func TestFleetService_ConcurrentAccess(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		go func(n int) {
 			id := "sub-" + string(rune('0'+n))
-			fs.subscribers[id] = make(chan *pb.Event, 10)
+			fs.SetSubscriber(id, make(chan *pb.Event, 10))
 			_ = fs.IsInstanceSubscribed(id)
 			_ = fs.GetSubscriberCount()
 		}(i)

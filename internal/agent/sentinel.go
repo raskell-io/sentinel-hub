@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 
 	"github.com/rs/zerolog/log"
@@ -18,6 +19,7 @@ type SentinelManager struct {
 	pidFile       string
 	backupDir     string
 	currentConfig string
+	mu            sync.RWMutex
 }
 
 // NewSentinelManager creates a new SentinelManager.
@@ -48,8 +50,10 @@ func (s *SentinelManager) ReadCurrentConfig() (string, error) {
 		}
 		return "", fmt.Errorf("failed to read config: %w", err)
 	}
+	s.mu.Lock()
 	s.currentConfig = string(content)
-	return s.currentConfig, nil
+	s.mu.Unlock()
+	return string(content), nil
 }
 
 // WriteConfig writes a new config to disk with backup.
@@ -81,7 +85,9 @@ func (s *SentinelManager) WriteConfig(content string) error {
 		return fmt.Errorf("failed to rename config: %w", err)
 	}
 
+	s.mu.Lock()
 	s.currentConfig = content
+	s.mu.Unlock()
 	log.Info().Str("path", s.configPath).Int("size", len(content)).Msg("Config written successfully")
 	return nil
 }
@@ -124,7 +130,9 @@ func (s *SentinelManager) Rollback() error {
 		return fmt.Errorf("failed to restore backup: %w", err)
 	}
 
+	s.mu.Lock()
 	s.currentConfig = string(content)
+	s.mu.Unlock()
 	log.Info().Str("backup", backupPath).Msg("Config rolled back successfully")
 	return nil
 }
@@ -212,5 +220,7 @@ func (s *SentinelManager) GetConfigPath() string {
 
 // GetCurrentConfig returns the current config content.
 func (s *SentinelManager) GetCurrentConfig() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	return s.currentConfig
 }
