@@ -129,7 +129,10 @@ func (c *Client) Close() error {
 	defer c.connMu.Unlock()
 
 	if c.conn != nil {
-		return c.conn.Close()
+		err := c.conn.Close()
+		c.conn = nil
+		c.client = nil
+		return err
 	}
 	return nil
 }
