@@ -113,6 +113,7 @@ type DeploymentInstance struct {
 	Status       DeploymentInstanceStatus `json:"status"`
 	StartedAt    *time.Time               `json:"started_at,omitempty"`
 	CompletedAt  *time.Time               `json:"completed_at,omitempty"`
+	LastStatusAt *time.Time               `json:"last_status_at,omitempty"` // Lease renewal timestamp
 	ErrorMessage *string                  `json:"error_message,omitempty"`
 }
 

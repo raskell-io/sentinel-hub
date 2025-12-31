@@ -765,11 +765,11 @@ func (s *Store) CreateDeploymentInstance(ctx context.Context, di *DeploymentInst
 	}
 
 	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO deployment_instances (id, deployment_id, instance_id, status, started_at, completed_at, error_message)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO deployment_instances (id, deployment_id, instance_id, status, started_at, completed_at, last_status_at, error_message)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 	`,
 		di.ID, di.DeploymentID, di.InstanceID, di.Status,
-		NullTime(di.StartedAt), NullTime(di.CompletedAt), NullString(di.ErrorMessage),
+		NullTime(di.StartedAt), NullTime(di.CompletedAt), NullTime(di.LastStatusAt), NullString(di.ErrorMessage),
 	)
 	if err != nil {
 		return fmt.Errorf("failed to create deployment instance: %w", err)
@@ -781,18 +781,18 @@ func (s *Store) CreateDeploymentInstance(ctx context.Context, di *DeploymentInst
 // GetDeploymentInstance retrieves a deployment instance by deployment and instance ID.
 func (s *Store) GetDeploymentInstance(ctx context.Context, deploymentID, instanceID string) (*DeploymentInstance, error) {
 	row := s.db.QueryRowContext(ctx, `
-		SELECT id, deployment_id, instance_id, status, started_at, completed_at, error_message
+		SELECT id, deployment_id, instance_id, status, started_at, completed_at, last_status_at, error_message
 		FROM deployment_instances
 		WHERE deployment_id = ? AND instance_id = ?
 	`, deploymentID, instanceID)
 
 	var di DeploymentInstance
-	var startedAt, completedAt sql.NullTime
+	var startedAt, completedAt, lastStatusAt sql.NullTime
 	var errorMessage sql.NullString
 
 	err := row.Scan(
 		&di.ID, &di.DeploymentID, &di.InstanceID, &di.Status,
-		&startedAt, &completedAt, &errorMessage,
+		&startedAt, &completedAt, &lastStatusAt, &errorMessage,
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -803,6 +803,7 @@ func (s *Store) GetDeploymentInstance(ctx context.Context, deploymentID, instanc
 
 	di.StartedAt = TimePtr(startedAt)
 	di.CompletedAt = TimePtr(completedAt)
+	di.LastStatusAt = TimePtr(lastStatusAt)
 	di.ErrorMessage = StringPtr(errorMessage)
 
 	return &di, nil
@@ -811,7 +812,7 @@ func (s *Store) GetDeploymentInstance(ctx context.Context, deploymentID, instanc
 // ListDeploymentInstances retrieves all instances for a deployment.
 func (s *Store) ListDeploymentInstances(ctx context.Context, deploymentID string) ([]*DeploymentInstance, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, deployment_id, instance_id, status, started_at, completed_at, error_message
+		SELECT id, deployment_id, instance_id, status, started_at, completed_at, last_status_at, error_message
 		FROM deployment_instances
 		WHERE deployment_id = ?
 		ORDER BY started_at ASC
@@ -824,12 +825,12 @@ func (s *Store) ListDeploymentInstances(ctx context.Context, deploymentID string
 	var instances []*DeploymentInstance
 	for rows.Next() {
 		var di DeploymentInstance
-		var startedAt, completedAt sql.NullTime
+		var startedAt, completedAt, lastStatusAt sql.NullTime
 		var errorMessage sql.NullString
 
 		err := rows.Scan(
 			&di.ID, &di.DeploymentID, &di.InstanceID, &di.Status,
-			&startedAt, &completedAt, &errorMessage,
+			&startedAt, &completedAt, &lastStatusAt, &errorMessage,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan deployment instance: %w", err)
@@ -837,6 +838,7 @@ func (s *Store) ListDeploymentInstances(ctx context.Context, deploymentID string
 
 		di.StartedAt = TimePtr(startedAt)
 		di.CompletedAt = TimePtr(completedAt)
+		di.LastStatusAt = TimePtr(lastStatusAt)
 		di.ErrorMessage = StringPtr(errorMessage)
 
 		instances = append(instances, &di)
@@ -849,10 +851,10 @@ func (s *Store) ListDeploymentInstances(ctx context.Context, deploymentID string
 func (s *Store) UpdateDeploymentInstance(ctx context.Context, di *DeploymentInstance) error {
 	result, err := s.db.ExecContext(ctx, `
 		UPDATE deployment_instances SET
-			status = ?, started_at = ?, completed_at = ?, error_message = ?
+			status = ?, started_at = ?, completed_at = ?, last_status_at = ?, error_message = ?
 		WHERE deployment_id = ? AND instance_id = ?
 	`,
-		di.Status, NullTime(di.StartedAt), NullTime(di.CompletedAt), NullString(di.ErrorMessage),
+		di.Status, NullTime(di.StartedAt), NullTime(di.CompletedAt), NullTime(di.LastStatusAt), NullString(di.ErrorMessage),
 		di.DeploymentID, di.InstanceID,
 	)
 	if err != nil {
@@ -877,16 +879,17 @@ func (s *Store) UpsertDeploymentInstance(ctx context.Context, di *DeploymentInst
 	}
 
 	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO deployment_instances (id, deployment_id, instance_id, status, started_at, completed_at, error_message)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO deployment_instances (id, deployment_id, instance_id, status, started_at, completed_at, last_status_at, error_message)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (deployment_id, instance_id) DO UPDATE SET
 			status = excluded.status,
 			started_at = COALESCE(deployment_instances.started_at, excluded.started_at),
 			completed_at = excluded.completed_at,
+			last_status_at = excluded.last_status_at,
 			error_message = excluded.error_message
 	`,
 		di.ID, di.DeploymentID, di.InstanceID, di.Status,
-		NullTime(di.StartedAt), NullTime(di.CompletedAt), NullString(di.ErrorMessage),
+		NullTime(di.StartedAt), NullTime(di.CompletedAt), NullTime(di.LastStatusAt), NullString(di.ErrorMessage),
 	)
 	if err != nil {
 		return fmt.Errorf("failed to upsert deployment instance: %w", err)

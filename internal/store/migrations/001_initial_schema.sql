@@ -97,6 +97,7 @@ CREATE TABLE IF NOT EXISTS deployment_instances (
     status TEXT NOT NULL DEFAULT 'pending',  -- pending, in_progress, completed, failed, rolled_back
     started_at DATETIME,
     completed_at DATETIME,
+    last_status_at DATETIME,  -- Last time agent reported status (lease renewal)
     error_message TEXT,
 
     FOREIGN KEY (deployment_id) REFERENCES deployments(id),
@@ -106,6 +107,7 @@ CREATE TABLE IF NOT EXISTS deployment_instances (
 
 CREATE INDEX IF NOT EXISTS idx_deployment_instances_deployment ON deployment_instances(deployment_id);
 CREATE INDEX IF NOT EXISTS idx_deployment_instances_instance ON deployment_instances(instance_id);
+CREATE INDEX IF NOT EXISTS idx_deployment_instances_last_status ON deployment_instances(last_status_at);
 
 -- ============================================
 -- Users

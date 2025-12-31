@@ -21,6 +21,8 @@ type DeploymentRunner struct {
 
 	// Configuration
 	timeout            time.Duration
+	instanceTimeout    time.Duration // Timeout for individual instance deployment
+	leaseTimeout       time.Duration // How long before a lease is considered stale
 	healthCheckRetries int
 	healthCheckDelay   time.Duration
 	batchDelay         time.Duration
@@ -38,6 +40,7 @@ type instanceResult struct {
 	Status       pb.DeploymentState
 	StartedAt    *time.Time
 	CompletedAt  *time.Time
+	LastStatusAt *time.Time // Last time agent reported status (lease)
 	ErrorMessage string
 }
 
@@ -48,6 +51,8 @@ type DeploymentRunnerConfig struct {
 	Store              *store.Store
 	FleetService       *hubgrpc.FleetService
 	Timeout            time.Duration
+	InstanceTimeout    time.Duration // Timeout for individual instance deployment
+	LeaseTimeout       time.Duration // How long before a lease is considered stale
 	HealthCheckRetries int
 	HealthCheckDelay   time.Duration
 }
@@ -56,12 +61,24 @@ type DeploymentRunnerConfig struct {
 func NewDeploymentRunner(cfg DeploymentRunnerConfig) *DeploymentRunner {
 	ctx, cancel := context.WithCancel(context.Background())
 
+	// Set defaults
+	instanceTimeout := cfg.InstanceTimeout
+	if instanceTimeout == 0 {
+		instanceTimeout = 5 * time.Minute
+	}
+	leaseTimeout := cfg.LeaseTimeout
+	if leaseTimeout == 0 {
+		leaseTimeout = 60 * time.Second // Agent must report every 60s or considered stale
+	}
+
 	runner := &DeploymentRunner{
 		deployment:         cfg.Deployment,
 		configVersion:      cfg.ConfigVersion,
 		store:              cfg.Store,
 		fleetService:       cfg.FleetService,
 		timeout:            cfg.Timeout,
+		instanceTimeout:    instanceTimeout,
+		leaseTimeout:       leaseTimeout,
 		healthCheckRetries: cfg.HealthCheckRetries,
 		healthCheckDelay:   cfg.HealthCheckDelay,
 		batchDelay:         30 * time.Second,
@@ -368,12 +385,13 @@ func (r *DeploymentRunner) deployToInstance(ctx context.Context, instanceID stri
 		Int("batch", batchNum).
 		Msg("Deploying to instance")
 
-	// Update instance result
+	// Update instance result with initial lease
 	now := time.Now().UTC()
 	r.instanceResultsMu.Lock()
 	r.instanceResults[instanceID] = &instanceResult{
-		Status:    pb.DeploymentState_DEPLOYMENT_STATE_IN_PROGRESS,
-		StartedAt: &now,
+		Status:       pb.DeploymentState_DEPLOYMENT_STATE_IN_PROGRESS,
+		StartedAt:    &now,
+		LastStatusAt: &now, // Initial lease
 	}
 	r.instanceResultsMu.Unlock()
 	r.persistInstanceStatus(ctx, instanceID)
@@ -443,9 +461,10 @@ func (r *DeploymentRunner) deployToInstance(ctx context.Context, instanceID stri
 }
 
 // waitForInstance waits for an instance to complete deployment.
+// It checks both for timeout and lease expiry (agent not reporting status).
 func (r *DeploymentRunner) waitForInstance(ctx context.Context, instanceID string) error {
 	// Poll for instance status with timeout
-	timeout := time.After(5 * time.Minute)
+	timeout := time.After(r.instanceTimeout)
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
 
@@ -454,21 +473,32 @@ func (r *DeploymentRunner) waitForInstance(ctx context.Context, instanceID strin
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-timeout:
-			return fmt.Errorf("timeout waiting for instance")
+			return fmt.Errorf("timeout waiting for instance after %v", r.instanceTimeout)
 		case <-ticker.C:
 			r.instanceResultsMu.RLock()
 			result, ok := r.instanceResults[instanceID]
-			r.instanceResultsMu.RUnlock()
-
 			if !ok {
+				r.instanceResultsMu.RUnlock()
 				continue
 			}
 
-			switch result.Status {
+			status := result.Status
+			lastStatusAt := result.LastStatusAt
+			errorMessage := result.ErrorMessage
+			r.instanceResultsMu.RUnlock()
+
+			// Check for lease expiry (agent stopped reporting)
+			if lastStatusAt != nil && status == pb.DeploymentState_DEPLOYMENT_STATE_IN_PROGRESS {
+				if time.Since(*lastStatusAt) > r.leaseTimeout {
+					return fmt.Errorf("lease expired: agent stopped reporting (last status %v ago)", time.Since(*lastStatusAt).Round(time.Second))
+				}
+			}
+
+			switch status {
 			case pb.DeploymentState_DEPLOYMENT_STATE_COMPLETED:
 				return nil
 			case pb.DeploymentState_DEPLOYMENT_STATE_FAILED:
-				return fmt.Errorf("deployment failed: %s", result.ErrorMessage)
+				return fmt.Errorf("deployment failed: %s", errorMessage)
 			case pb.DeploymentState_DEPLOYMENT_STATE_ROLLED_BACK:
 				return fmt.Errorf("instance rolled back")
 			}
@@ -490,6 +520,7 @@ func (r *DeploymentRunner) setInstanceError(instanceID, errorMsg string) {
 }
 
 // ReportInstanceStatus handles status reports from agents.
+// Each status report acts as a lease renewal.
 func (r *DeploymentRunner) ReportInstanceStatus(instanceID string, state pb.DeploymentState, message, errorDetails string) {
 	now := time.Now().UTC()
 
@@ -501,6 +532,7 @@ func (r *DeploymentRunner) ReportInstanceStatus(instanceID string, state pb.Depl
 	}
 
 	result.Status = state
+	result.LastStatusAt = &now // Update lease
 	if state == pb.DeploymentState_DEPLOYMENT_STATE_COMPLETED ||
 		state == pb.DeploymentState_DEPLOYMENT_STATE_FAILED ||
 		state == pb.DeploymentState_DEPLOYMENT_STATE_ROLLED_BACK {
@@ -562,6 +594,7 @@ func (r *DeploymentRunner) persistInstanceStatus(ctx context.Context, instanceID
 	status := result.Status
 	startedAt := result.StartedAt
 	completedAt := result.CompletedAt
+	lastStatusAt := result.LastStatusAt
 	errorMsg := result.ErrorMessage
 	r.instanceResultsMu.RUnlock()
 
@@ -588,6 +621,7 @@ func (r *DeploymentRunner) persistInstanceStatus(ctx context.Context, instanceID
 		Status:       storeStatus,
 		StartedAt:    startedAt,
 		CompletedAt:  completedAt,
+		LastStatusAt: lastStatusAt,
 	}
 	if errorMsg != "" {
 		di.ErrorMessage = &errorMsg

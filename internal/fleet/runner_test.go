@@ -390,3 +390,172 @@ func TestDeploymentRunner_ConcurrentAccess(t *testing.T) {
 
 	<-done
 }
+
+func TestNewDeploymentRunner_DefaultTimeouts(t *testing.T) {
+	runner := NewDeploymentRunner(DeploymentRunnerConfig{
+		Deployment: &store.Deployment{
+			ID:              "dep-1",
+			TargetInstances: []string{"inst-1"},
+		},
+		ConfigVersion: &store.ConfigVersion{Version: 1},
+	})
+
+	// Check default instance timeout
+	if runner.instanceTimeout != 5*time.Minute {
+		t.Errorf("instanceTimeout = %v, want %v", runner.instanceTimeout, 5*time.Minute)
+	}
+
+	// Check default lease timeout
+	if runner.leaseTimeout != 60*time.Second {
+		t.Errorf("leaseTimeout = %v, want %v", runner.leaseTimeout, 60*time.Second)
+	}
+}
+
+func TestNewDeploymentRunner_CustomTimeouts(t *testing.T) {
+	runner := NewDeploymentRunner(DeploymentRunnerConfig{
+		Deployment: &store.Deployment{
+			ID:              "dep-1",
+			TargetInstances: []string{"inst-1"},
+		},
+		ConfigVersion:   &store.ConfigVersion{Version: 1},
+		InstanceTimeout: 10 * time.Minute,
+		LeaseTimeout:    30 * time.Second,
+	})
+
+	if runner.instanceTimeout != 10*time.Minute {
+		t.Errorf("instanceTimeout = %v, want %v", runner.instanceTimeout, 10*time.Minute)
+	}
+
+	if runner.leaseTimeout != 30*time.Second {
+		t.Errorf("leaseTimeout = %v, want %v", runner.leaseTimeout, 30*time.Second)
+	}
+}
+
+func TestDeploymentRunner_ReportInstanceStatus_UpdatesLease(t *testing.T) {
+	runner := NewDeploymentRunner(DeploymentRunnerConfig{
+		Deployment: &store.Deployment{
+			ID:              "dep-1",
+			TargetInstances: []string{"inst-1"},
+		},
+		ConfigVersion: &store.ConfigVersion{Version: 1},
+	})
+
+	// Initial status - no LastStatusAt
+	result := runner.instanceResults["inst-1"]
+	if result.LastStatusAt != nil {
+		t.Error("LastStatusAt should be nil before any status report")
+	}
+
+	// Report status
+	before := time.Now().UTC()
+	runner.ReportInstanceStatus("inst-1", pb.DeploymentState_DEPLOYMENT_STATE_IN_PROGRESS, "starting", "")
+	after := time.Now().UTC()
+
+	result = runner.instanceResults["inst-1"]
+	if result.LastStatusAt == nil {
+		t.Fatal("LastStatusAt should be set after status report")
+	}
+
+	if result.LastStatusAt.Before(before) || result.LastStatusAt.After(after) {
+		t.Errorf("LastStatusAt = %v, should be between %v and %v", result.LastStatusAt, before, after)
+	}
+
+	// Report another status - lease should update
+	time.Sleep(10 * time.Millisecond)
+	firstLease := *result.LastStatusAt
+
+	runner.ReportInstanceStatus("inst-1", pb.DeploymentState_DEPLOYMENT_STATE_IN_PROGRESS, "still working", "")
+
+	result = runner.instanceResults["inst-1"]
+	if !result.LastStatusAt.After(firstLease) {
+		t.Error("LastStatusAt should update on each status report")
+	}
+}
+
+func TestDeploymentRunner_LeaseExpiry(t *testing.T) {
+	// Create runner with short lease timeout
+	// Note: polling interval is 2s, so instance timeout must be > 2s
+	runner := NewDeploymentRunner(DeploymentRunnerConfig{
+		Deployment: &store.Deployment{
+			ID:              "dep-1",
+			TargetInstances: []string{"inst-1"},
+		},
+		ConfigVersion:   &store.ConfigVersion{Version: 1},
+		InstanceTimeout: 5 * time.Second, // Long enough to allow polling
+		LeaseTimeout:    100 * time.Millisecond,
+	})
+
+	// Set instance to in-progress with expired lease
+	oldTime := time.Now().UTC().Add(-500 * time.Millisecond)
+	runner.instanceResults["inst-1"].Status = pb.DeploymentState_DEPLOYMENT_STATE_IN_PROGRESS
+	runner.instanceResults["inst-1"].LastStatusAt = &oldTime
+
+	// waitForInstance should detect lease expiry on first poll (within ~2s)
+	err := runner.waitForInstance(runner.ctx, "inst-1")
+	if err == nil {
+		t.Fatal("waitForInstance should return error for expired lease")
+	}
+
+	if err.Error() == "" || !contains(err.Error(), "lease expired") {
+		t.Errorf("error = %v, should mention 'lease expired'", err)
+	}
+}
+
+func TestDeploymentRunner_LeaseRenewalPreventsExpiry(t *testing.T) {
+	// Create runner with reasonable timeouts
+	// Lease timeout should be longer than polling interval to give agent time to report
+	runner := NewDeploymentRunner(DeploymentRunnerConfig{
+		Deployment: &store.Deployment{
+			ID:              "dep-1",
+			TargetInstances: []string{"inst-1"},
+		},
+		ConfigVersion:   &store.ConfigVersion{Version: 1},
+		InstanceTimeout: 10 * time.Second,
+		LeaseTimeout:    5 * time.Second,
+	})
+
+	// Start waitForInstance in background
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- runner.waitForInstance(runner.ctx, "inst-1")
+	}()
+
+	// Set to in-progress
+	runner.ReportInstanceStatus("inst-1", pb.DeploymentState_DEPLOYMENT_STATE_IN_PROGRESS, "starting", "")
+
+	// Keep renewing lease (faster than lease timeout)
+	for i := 0; i < 3; i++ {
+		time.Sleep(500 * time.Millisecond)
+		runner.ReportInstanceStatus("inst-1", pb.DeploymentState_DEPLOYMENT_STATE_IN_PROGRESS, "still working", "")
+	}
+
+	// Complete the deployment
+	runner.ReportInstanceStatus("inst-1", pb.DeploymentState_DEPLOYMENT_STATE_COMPLETED, "done", "")
+
+	// Should succeed
+	select {
+	case err := <-errCh:
+		if err != nil {
+			t.Errorf("waitForInstance returned error = %v, want nil", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("waitForInstance timed out")
+	}
+}
+
+// contains checks if a string contains a substring
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsAt(s, substr, 0))
+}
+
+func containsAt(s, substr string, start int) bool {
+	if start+len(substr) > len(s) {
+		return false
+	}
+	for i := start; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
+}
