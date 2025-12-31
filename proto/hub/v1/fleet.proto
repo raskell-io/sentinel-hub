@@ -217,16 +217,17 @@ message ConfigUpdateEvent {
 
 message DeploymentEvent {
   string deployment_id = 1;
-  string config_version = 2;
-  DeploymentStrategy strategy = 3;
+  string config_id = 2;
+  string config_version = 3;
+  DeploymentStrategy strategy = 4;
   // Position in rolling deployment (1-indexed).
-  int32 batch_position = 4;
+  int32 batch_position = 5;
   // Total batches in deployment.
-  int32 batch_total = 5;
+  int32 batch_total = 6;
   // Unix timestamp deadline.
-  google.protobuf.Timestamp deadline = 6;
+  google.protobuf.Timestamp deadline = 7;
   // Whether this is a rollback deployment.
-  bool is_rollback = 7;
+  bool is_rollback = 8;
 }
 
 message DrainEvent {

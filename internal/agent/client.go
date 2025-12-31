@@ -53,7 +53,7 @@ type Client struct {
 // EventHandler is called when events are received from the Hub.
 type EventHandler interface {
 	OnConfigUpdate(version, hash, content string) error
-	OnDeployment(deploymentID, configVersion string, isRollback bool) error
+	OnDeployment(deploymentID, configID, configVersion string, isRollback bool) error
 	OnDrain(timeoutSecs int, reason string) error
 }
 
@@ -278,6 +278,39 @@ func (c *Client) FetchConfig(ctx context.Context, version string) (*pb.GetConfig
 	return resp, nil
 }
 
+// FetchConfigVersion fetches a specific config version by config ID.
+func (c *Client) FetchConfigVersion(ctx context.Context, configID string, versionNumber int) (*pb.GetConfigVersionResponse, error) {
+	c.connMu.RLock()
+	client := c.client
+	token := c.token
+	c.connMu.RUnlock()
+
+	if client == nil || token == "" {
+		return nil, fmt.Errorf("not registered")
+	}
+
+	log.Info().Str("config_id", configID).Int("version", versionNumber).Msg("Fetching config version from Hub...")
+
+	resp, err := client.GetConfigVersion(ctx, &pb.GetConfigVersionRequest{
+		InstanceId:    c.instanceID,
+		Token:         token,
+		ConfigId:      configID,
+		VersionNumber: int32(versionNumber),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch config version: %w", err)
+	}
+
+	log.Info().
+		Str("config_id", resp.ConfigId).
+		Int32("version", resp.VersionNumber).
+		Str("hash", resp.Hash[:16]+"...").
+		Int("content_length", len(resp.Content)).
+		Msg("Config version fetched successfully")
+
+	return resp, nil
+}
+
 // UpdateConfigState updates the local config state after applying a config.
 func (c *Client) UpdateConfigState(version, hash string) {
 	c.configMu.Lock()
@@ -439,6 +472,7 @@ func (c *Client) handleEvent(ctx context.Context, event *pb.Event) {
 		if dep := event.GetDeployment(); dep != nil {
 			log.Info().
 				Str("deployment_id", dep.DeploymentId).
+				Str("config_id", dep.ConfigId).
 				Str("config_version", dep.ConfigVersion).
 				Str("strategy", dep.Strategy.String()).
 				Int32("batch", dep.BatchPosition).
@@ -455,7 +489,7 @@ func (c *Client) handleEvent(ctx context.Context, event *pb.Event) {
 			c.ReportDeploymentStatus(ctx, dep.DeploymentId, pb.DeploymentState_DEPLOYMENT_STATE_IN_PROGRESS, "Starting deployment", "")
 
 			if c.eventHandler != nil {
-				if err := c.eventHandler.OnDeployment(dep.DeploymentId, dep.ConfigVersion, dep.IsRollback); err != nil {
+				if err := c.eventHandler.OnDeployment(dep.DeploymentId, dep.ConfigId, dep.ConfigVersion, dep.IsRollback); err != nil {
 					log.Error().Err(err).Msg("Deployment failed")
 					c.ReportDeploymentStatus(ctx, dep.DeploymentId, pb.DeploymentState_DEPLOYMENT_STATE_FAILED, "Deployment failed", err.Error())
 				} else {

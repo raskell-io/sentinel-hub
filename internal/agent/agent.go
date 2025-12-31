@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
@@ -319,21 +320,26 @@ func (a *Agent) OnConfigUpdate(version, hash, content string) error {
 }
 
 // OnDeployment implements EventHandler.
-func (a *Agent) OnDeployment(deploymentID, configVersion string, isRollback bool) error {
+func (a *Agent) OnDeployment(deploymentID, configID, configVersion string, isRollback bool) error {
 	log.Info().
 		Str("deployment_id", deploymentID).
+		Str("config_id", configID).
 		Str("config_version", configVersion).
 		Bool("rollback", isRollback).
 		Msg("Processing deployment...")
 
-	// Fetch the config for this deployment
-	cfg, err := a.client.FetchConfig(context.Background(), configVersion)
+	// Parse version number
+	var versionNum int
+	fmt.Sscanf(configVersion, "%d", &versionNum)
+
+	// Fetch the config for this deployment using config_id
+	cfg, err := a.client.FetchConfigVersion(context.Background(), configID, versionNum)
 	if err != nil {
 		return err
 	}
 
 	// Apply the config
-	if err := a.OnConfigUpdate(cfg.Version, cfg.Hash, cfg.Content); err != nil {
+	if err := a.OnConfigUpdate(fmt.Sprintf("%d", cfg.VersionNumber), cfg.Hash, cfg.Content); err != nil {
 		// If this was a rollback and it failed, we're in trouble
 		if isRollback {
 			log.Error().Err(err).Msg("Rollback failed!")

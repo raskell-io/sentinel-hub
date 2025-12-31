@@ -2,7 +2,7 @@
 // versions:
 // - protoc-gen-go-grpc v1.6.0
 // - protoc             v6.33.2
-// source: proto/hub/v1/fleet.proto
+// source: fleet.proto
 
 package hubpb
 
@@ -415,5 +415,5 @@ var FleetService_ServiceDesc = grpc.ServiceDesc{
 			ServerStreams: true,
 		},
 	},
-	Metadata: "proto/hub/v1/fleet.proto",
+	Metadata: "fleet.proto",
 }

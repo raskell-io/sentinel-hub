@@ -2,7 +2,7 @@
 // versions:
 // 	protoc-gen-go v1.36.11
 // 	protoc        v6.33.2
-// source: proto/hub/v1/fleet.proto
+// source: fleet.proto
 
 package hubpb
 
@@ -58,11 +58,11 @@ func (x InstanceState) String() string {
 }
 
 func (InstanceState) Descriptor() protoreflect.EnumDescriptor {
-	return file_proto_hub_v1_fleet_proto_enumTypes[0].Descriptor()
+	return file_fleet_proto_enumTypes[0].Descriptor()
 }
 
 func (InstanceState) Type() protoreflect.EnumType {
-	return &file_proto_hub_v1_fleet_proto_enumTypes[0]
+	return &file_fleet_proto_enumTypes[0]
 }
 
 func (x InstanceState) Number() protoreflect.EnumNumber {
@@ -71,7 +71,7 @@ func (x InstanceState) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use InstanceState.Descriptor instead.
 func (InstanceState) EnumDescriptor() ([]byte, []int) {
-	return file_proto_hub_v1_fleet_proto_rawDescGZIP(), []int{0}
+	return file_fleet_proto_rawDescGZIP(), []int{0}
 }
 
 type EventType int32
@@ -113,11 +113,11 @@ func (x EventType) String() string {
 }
 
 func (EventType) Descriptor() protoreflect.EnumDescriptor {
-	return file_proto_hub_v1_fleet_proto_enumTypes[1].Descriptor()
+	return file_fleet_proto_enumTypes[1].Descriptor()
 }
 
 func (EventType) Type() protoreflect.EnumType {
-	return &file_proto_hub_v1_fleet_proto_enumTypes[1]
+	return &file_fleet_proto_enumTypes[1]
 }
 
 func (x EventType) Number() protoreflect.EnumNumber {
@@ -126,7 +126,7 @@ func (x EventType) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use EventType.Descriptor instead.
 func (EventType) EnumDescriptor() ([]byte, []int) {
-	return file_proto_hub_v1_fleet_proto_rawDescGZIP(), []int{1}
+	return file_fleet_proto_rawDescGZIP(), []int{1}
 }
 
 type DeploymentStrategy int32
@@ -165,11 +165,11 @@ func (x DeploymentStrategy) String() string {
 }
 
 func (DeploymentStrategy) Descriptor() protoreflect.EnumDescriptor {
-	return file_proto_hub_v1_fleet_proto_enumTypes[2].Descriptor()
+	return file_fleet_proto_enumTypes[2].Descriptor()
 }
 
 func (DeploymentStrategy) Type() protoreflect.EnumType {
-	return &file_proto_hub_v1_fleet_proto_enumTypes[2]
+	return &file_fleet_proto_enumTypes[2]
 }
 
 func (x DeploymentStrategy) Number() protoreflect.EnumNumber {
@@ -178,7 +178,7 @@ func (x DeploymentStrategy) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use DeploymentStrategy.Descriptor instead.
 func (DeploymentStrategy) EnumDescriptor() ([]byte, []int) {
-	return file_proto_hub_v1_fleet_proto_rawDescGZIP(), []int{2}
+	return file_fleet_proto_rawDescGZIP(), []int{2}
 }
 
 type DeploymentState int32
@@ -226,11 +226,11 @@ func (x DeploymentState) String() string {
 }
 
 func (DeploymentState) Descriptor() protoreflect.EnumDescriptor {
-	return file_proto_hub_v1_fleet_proto_enumTypes[3].Descriptor()
+	return file_fleet_proto_enumTypes[3].Descriptor()
 }
 
 func (DeploymentState) Type() protoreflect.EnumType {
-	return &file_proto_hub_v1_fleet_proto_enumTypes[3]
+	return &file_fleet_proto_enumTypes[3]
 }
 
 func (x DeploymentState) Number() protoreflect.EnumNumber {
@@ -239,7 +239,7 @@ func (x DeploymentState) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use DeploymentState.Descriptor instead.
 func (DeploymentState) EnumDescriptor() ([]byte, []int) {
-	return file_proto_hub_v1_fleet_proto_rawDescGZIP(), []int{3}
+	return file_fleet_proto_rawDescGZIP(), []int{3}
 }
 
 type ActionType int32
@@ -281,11 +281,11 @@ func (x ActionType) String() string {
 }
 
 func (ActionType) Descriptor() protoreflect.EnumDescriptor {
-	return file_proto_hub_v1_fleet_proto_enumTypes[4].Descriptor()
+	return file_fleet_proto_enumTypes[4].Descriptor()
 }
 
 func (ActionType) Type() protoreflect.EnumType {
-	return &file_proto_hub_v1_fleet_proto_enumTypes[4]
+	return &file_fleet_proto_enumTypes[4]
 }
 
 func (x ActionType) Number() protoreflect.EnumNumber {
@@ -294,7 +294,7 @@ func (x ActionType) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use ActionType.Descriptor instead.
 func (ActionType) EnumDescriptor() ([]byte, []int) {
-	return file_proto_hub_v1_fleet_proto_rawDescGZIP(), []int{4}
+	return file_fleet_proto_rawDescGZIP(), []int{4}
 }
 
 type RegisterRequest struct {
@@ -319,7 +319,7 @@ type RegisterRequest struct {
 
 func (x *RegisterRequest) Reset() {
 	*x = RegisterRequest{}
-	mi := &file_proto_hub_v1_fleet_proto_msgTypes[0]
+	mi := &file_fleet_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -331,7 +331,7 @@ func (x *RegisterRequest) String() string {
 func (*RegisterRequest) ProtoMessage() {}
 
 func (x *RegisterRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_hub_v1_fleet_proto_msgTypes[0]
+	mi := &file_fleet_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -344,7 +344,7 @@ func (x *RegisterRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RegisterRequest.ProtoReflect.Descriptor instead.
 func (*RegisterRequest) Descriptor() ([]byte, []int) {
-	return file_proto_hub_v1_fleet_proto_rawDescGZIP(), []int{0}
+	return file_fleet_proto_rawDescGZIP(), []int{0}
 }
 
 func (x *RegisterRequest) GetInstanceId() string {
@@ -412,7 +412,7 @@ type RegisterResponse struct {
 
 func (x *RegisterResponse) Reset() {
 	*x = RegisterResponse{}
-	mi := &file_proto_hub_v1_fleet_proto_msgTypes[1]
+	mi := &file_fleet_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -424,7 +424,7 @@ func (x *RegisterResponse) String() string {
 func (*RegisterResponse) ProtoMessage() {}
 
 func (x *RegisterResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_hub_v1_fleet_proto_msgTypes[1]
+	mi := &file_fleet_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -437,7 +437,7 @@ func (x *RegisterResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RegisterResponse.ProtoReflect.Descriptor instead.
 func (*RegisterResponse) Descriptor() ([]byte, []int) {
-	return file_proto_hub_v1_fleet_proto_rawDescGZIP(), []int{1}
+	return file_fleet_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *RegisterResponse) GetToken() string {
@@ -482,7 +482,7 @@ type HeartbeatRequest struct {
 
 func (x *HeartbeatRequest) Reset() {
 	*x = HeartbeatRequest{}
-	mi := &file_proto_hub_v1_fleet_proto_msgTypes[2]
+	mi := &file_fleet_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -494,7 +494,7 @@ func (x *HeartbeatRequest) String() string {
 func (*HeartbeatRequest) ProtoMessage() {}
 
 func (x *HeartbeatRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_hub_v1_fleet_proto_msgTypes[2]
+	mi := &file_fleet_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -507,7 +507,7 @@ func (x *HeartbeatRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HeartbeatRequest.ProtoReflect.Descriptor instead.
 func (*HeartbeatRequest) Descriptor() ([]byte, []int) {
-	return file_proto_hub_v1_fleet_proto_rawDescGZIP(), []int{2}
+	return file_fleet_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *HeartbeatRequest) GetInstanceId() string {
@@ -566,7 +566,7 @@ type HeartbeatResponse struct {
 
 func (x *HeartbeatResponse) Reset() {
 	*x = HeartbeatResponse{}
-	mi := &file_proto_hub_v1_fleet_proto_msgTypes[3]
+	mi := &file_fleet_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -578,7 +578,7 @@ func (x *HeartbeatResponse) String() string {
 func (*HeartbeatResponse) ProtoMessage() {}
 
 func (x *HeartbeatResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_hub_v1_fleet_proto_msgTypes[3]
+	mi := &file_fleet_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -591,7 +591,7 @@ func (x *HeartbeatResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HeartbeatResponse.ProtoReflect.Descriptor instead.
 func (*HeartbeatResponse) Descriptor() ([]byte, []int) {
-	return file_proto_hub_v1_fleet_proto_rawDescGZIP(), []int{3}
+	return file_fleet_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *HeartbeatResponse) GetConfigUpdateAvailable() bool {
@@ -627,7 +627,7 @@ type DeregisterRequest struct {
 
 func (x *DeregisterRequest) Reset() {
 	*x = DeregisterRequest{}
-	mi := &file_proto_hub_v1_fleet_proto_msgTypes[4]
+	mi := &file_fleet_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -639,7 +639,7 @@ func (x *DeregisterRequest) String() string {
 func (*DeregisterRequest) ProtoMessage() {}
 
 func (x *DeregisterRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_hub_v1_fleet_proto_msgTypes[4]
+	mi := &file_fleet_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -652,7 +652,7 @@ func (x *DeregisterRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeregisterRequest.ProtoReflect.Descriptor instead.
 func (*DeregisterRequest) Descriptor() ([]byte, []int) {
-	return file_proto_hub_v1_fleet_proto_rawDescGZIP(), []int{4}
+	return file_fleet_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *DeregisterRequest) GetInstanceId() string {
@@ -685,7 +685,7 @@ type DeregisterResponse struct {
 
 func (x *DeregisterResponse) Reset() {
 	*x = DeregisterResponse{}
-	mi := &file_proto_hub_v1_fleet_proto_msgTypes[5]
+	mi := &file_fleet_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -697,7 +697,7 @@ func (x *DeregisterResponse) String() string {
 func (*DeregisterResponse) ProtoMessage() {}
 
 func (x *DeregisterResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_hub_v1_fleet_proto_msgTypes[5]
+	mi := &file_fleet_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -710,7 +710,7 @@ func (x *DeregisterResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeregisterResponse.ProtoReflect.Descriptor instead.
 func (*DeregisterResponse) Descriptor() ([]byte, []int) {
-	return file_proto_hub_v1_fleet_proto_rawDescGZIP(), []int{5}
+	return file_fleet_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *DeregisterResponse) GetAcknowledged() bool {
@@ -735,7 +735,7 @@ type InstanceStatus struct {
 
 func (x *InstanceStatus) Reset() {
 	*x = InstanceStatus{}
-	mi := &file_proto_hub_v1_fleet_proto_msgTypes[6]
+	mi := &file_fleet_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -747,7 +747,7 @@ func (x *InstanceStatus) String() string {
 func (*InstanceStatus) ProtoMessage() {}
 
 func (x *InstanceStatus) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_hub_v1_fleet_proto_msgTypes[6]
+	mi := &file_fleet_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -760,7 +760,7 @@ func (x *InstanceStatus) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InstanceStatus.ProtoReflect.Descriptor instead.
 func (*InstanceStatus) Descriptor() ([]byte, []int) {
-	return file_proto_hub_v1_fleet_proto_rawDescGZIP(), []int{6}
+	return file_fleet_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *InstanceStatus) GetState() InstanceState {
@@ -805,7 +805,7 @@ type InstanceMetrics struct {
 
 func (x *InstanceMetrics) Reset() {
 	*x = InstanceMetrics{}
-	mi := &file_proto_hub_v1_fleet_proto_msgTypes[7]
+	mi := &file_fleet_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -817,7 +817,7 @@ func (x *InstanceMetrics) String() string {
 func (*InstanceMetrics) ProtoMessage() {}
 
 func (x *InstanceMetrics) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_hub_v1_fleet_proto_msgTypes[7]
+	mi := &file_fleet_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -830,7 +830,7 @@ func (x *InstanceMetrics) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InstanceMetrics.ProtoReflect.Descriptor instead.
 func (*InstanceMetrics) Descriptor() ([]byte, []int) {
-	return file_proto_hub_v1_fleet_proto_rawDescGZIP(), []int{7}
+	return file_fleet_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *InstanceMetrics) GetRequestsTotal() int64 {
@@ -887,7 +887,7 @@ type GetConfigRequest struct {
 
 func (x *GetConfigRequest) Reset() {
 	*x = GetConfigRequest{}
-	mi := &file_proto_hub_v1_fleet_proto_msgTypes[8]
+	mi := &file_fleet_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -899,7 +899,7 @@ func (x *GetConfigRequest) String() string {
 func (*GetConfigRequest) ProtoMessage() {}
 
 func (x *GetConfigRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_hub_v1_fleet_proto_msgTypes[8]
+	mi := &file_fleet_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -912,7 +912,7 @@ func (x *GetConfigRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetConfigRequest.ProtoReflect.Descriptor instead.
 func (*GetConfigRequest) Descriptor() ([]byte, []int) {
-	return file_proto_hub_v1_fleet_proto_rawDescGZIP(), []int{8}
+	return file_fleet_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *GetConfigRequest) GetInstanceId() string {
@@ -949,7 +949,7 @@ type GetConfigResponse struct {
 
 func (x *GetConfigResponse) Reset() {
 	*x = GetConfigResponse{}
-	mi := &file_proto_hub_v1_fleet_proto_msgTypes[9]
+	mi := &file_fleet_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -961,7 +961,7 @@ func (x *GetConfigResponse) String() string {
 func (*GetConfigResponse) ProtoMessage() {}
 
 func (x *GetConfigResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_hub_v1_fleet_proto_msgTypes[9]
+	mi := &file_fleet_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -974,7 +974,7 @@ func (x *GetConfigResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetConfigResponse.ProtoReflect.Descriptor instead.
 func (*GetConfigResponse) Descriptor() ([]byte, []int) {
-	return file_proto_hub_v1_fleet_proto_rawDescGZIP(), []int{9}
+	return file_fleet_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *GetConfigResponse) GetVersion() string {
@@ -1017,7 +1017,7 @@ type GetConfigVersionRequest struct {
 
 func (x *GetConfigVersionRequest) Reset() {
 	*x = GetConfigVersionRequest{}
-	mi := &file_proto_hub_v1_fleet_proto_msgTypes[10]
+	mi := &file_fleet_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1029,7 +1029,7 @@ func (x *GetConfigVersionRequest) String() string {
 func (*GetConfigVersionRequest) ProtoMessage() {}
 
 func (x *GetConfigVersionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_hub_v1_fleet_proto_msgTypes[10]
+	mi := &file_fleet_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1042,7 +1042,7 @@ func (x *GetConfigVersionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetConfigVersionRequest.ProtoReflect.Descriptor instead.
 func (*GetConfigVersionRequest) Descriptor() ([]byte, []int) {
-	return file_proto_hub_v1_fleet_proto_rawDescGZIP(), []int{10}
+	return file_fleet_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *GetConfigVersionRequest) GetInstanceId() string {
@@ -1087,7 +1087,7 @@ type GetConfigVersionResponse struct {
 
 func (x *GetConfigVersionResponse) Reset() {
 	*x = GetConfigVersionResponse{}
-	mi := &file_proto_hub_v1_fleet_proto_msgTypes[11]
+	mi := &file_fleet_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1099,7 +1099,7 @@ func (x *GetConfigVersionResponse) String() string {
 func (*GetConfigVersionResponse) ProtoMessage() {}
 
 func (x *GetConfigVersionResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_hub_v1_fleet_proto_msgTypes[11]
+	mi := &file_fleet_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1112,7 +1112,7 @@ func (x *GetConfigVersionResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetConfigVersionResponse.ProtoReflect.Descriptor instead.
 func (*GetConfigVersionResponse) Descriptor() ([]byte, []int) {
-	return file_proto_hub_v1_fleet_proto_rawDescGZIP(), []int{11}
+	return file_fleet_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *GetConfigVersionResponse) GetConfigId() string {
@@ -1167,7 +1167,7 @@ type SubscribeRequest struct {
 
 func (x *SubscribeRequest) Reset() {
 	*x = SubscribeRequest{}
-	mi := &file_proto_hub_v1_fleet_proto_msgTypes[12]
+	mi := &file_fleet_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1179,7 +1179,7 @@ func (x *SubscribeRequest) String() string {
 func (*SubscribeRequest) ProtoMessage() {}
 
 func (x *SubscribeRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_hub_v1_fleet_proto_msgTypes[12]
+	mi := &file_fleet_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1192,7 +1192,7 @@ func (x *SubscribeRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SubscribeRequest.ProtoReflect.Descriptor instead.
 func (*SubscribeRequest) Descriptor() ([]byte, []int) {
-	return file_proto_hub_v1_fleet_proto_rawDescGZIP(), []int{12}
+	return file_fleet_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *SubscribeRequest) GetInstanceId() string {
@@ -1227,7 +1227,7 @@ type Event struct {
 
 func (x *Event) Reset() {
 	*x = Event{}
-	mi := &file_proto_hub_v1_fleet_proto_msgTypes[13]
+	mi := &file_fleet_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1239,7 +1239,7 @@ func (x *Event) String() string {
 func (*Event) ProtoMessage() {}
 
 func (x *Event) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_hub_v1_fleet_proto_msgTypes[13]
+	mi := &file_fleet_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1252,7 +1252,7 @@ func (x *Event) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Event.ProtoReflect.Descriptor instead.
 func (*Event) Descriptor() ([]byte, []int) {
-	return file_proto_hub_v1_fleet_proto_rawDescGZIP(), []int{13}
+	return file_fleet_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *Event) GetEventId() string {
@@ -1358,7 +1358,7 @@ type ConfigUpdateEvent struct {
 
 func (x *ConfigUpdateEvent) Reset() {
 	*x = ConfigUpdateEvent{}
-	mi := &file_proto_hub_v1_fleet_proto_msgTypes[14]
+	mi := &file_fleet_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1370,7 +1370,7 @@ func (x *ConfigUpdateEvent) String() string {
 func (*ConfigUpdateEvent) ProtoMessage() {}
 
 func (x *ConfigUpdateEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_hub_v1_fleet_proto_msgTypes[14]
+	mi := &file_fleet_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1383,7 +1383,7 @@ func (x *ConfigUpdateEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConfigUpdateEvent.ProtoReflect.Descriptor instead.
 func (*ConfigUpdateEvent) Descriptor() ([]byte, []int) {
-	return file_proto_hub_v1_fleet_proto_rawDescGZIP(), []int{14}
+	return file_fleet_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *ConfigUpdateEvent) GetConfigVersion() string {
@@ -1410,23 +1410,24 @@ func (x *ConfigUpdateEvent) GetChangeSummary() string {
 type DeploymentEvent struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	DeploymentId  string                 `protobuf:"bytes,1,opt,name=deployment_id,json=deploymentId,proto3" json:"deployment_id,omitempty"`
-	ConfigVersion string                 `protobuf:"bytes,2,opt,name=config_version,json=configVersion,proto3" json:"config_version,omitempty"`
-	Strategy      DeploymentStrategy     `protobuf:"varint,3,opt,name=strategy,proto3,enum=sentinel.hub.v1.DeploymentStrategy" json:"strategy,omitempty"`
+	ConfigId      string                 `protobuf:"bytes,2,opt,name=config_id,json=configId,proto3" json:"config_id,omitempty"`
+	ConfigVersion string                 `protobuf:"bytes,3,opt,name=config_version,json=configVersion,proto3" json:"config_version,omitempty"`
+	Strategy      DeploymentStrategy     `protobuf:"varint,4,opt,name=strategy,proto3,enum=sentinel.hub.v1.DeploymentStrategy" json:"strategy,omitempty"`
 	// Position in rolling deployment (1-indexed).
-	BatchPosition int32 `protobuf:"varint,4,opt,name=batch_position,json=batchPosition,proto3" json:"batch_position,omitempty"`
+	BatchPosition int32 `protobuf:"varint,5,opt,name=batch_position,json=batchPosition,proto3" json:"batch_position,omitempty"`
 	// Total batches in deployment.
-	BatchTotal int32 `protobuf:"varint,5,opt,name=batch_total,json=batchTotal,proto3" json:"batch_total,omitempty"`
+	BatchTotal int32 `protobuf:"varint,6,opt,name=batch_total,json=batchTotal,proto3" json:"batch_total,omitempty"`
 	// Unix timestamp deadline.
-	Deadline *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=deadline,proto3" json:"deadline,omitempty"`
+	Deadline *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=deadline,proto3" json:"deadline,omitempty"`
 	// Whether this is a rollback deployment.
-	IsRollback    bool `protobuf:"varint,7,opt,name=is_rollback,json=isRollback,proto3" json:"is_rollback,omitempty"`
+	IsRollback    bool `protobuf:"varint,8,opt,name=is_rollback,json=isRollback,proto3" json:"is_rollback,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *DeploymentEvent) Reset() {
 	*x = DeploymentEvent{}
-	mi := &file_proto_hub_v1_fleet_proto_msgTypes[15]
+	mi := &file_fleet_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1438,7 +1439,7 @@ func (x *DeploymentEvent) String() string {
 func (*DeploymentEvent) ProtoMessage() {}
 
 func (x *DeploymentEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_hub_v1_fleet_proto_msgTypes[15]
+	mi := &file_fleet_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1451,12 +1452,19 @@ func (x *DeploymentEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeploymentEvent.ProtoReflect.Descriptor instead.
 func (*DeploymentEvent) Descriptor() ([]byte, []int) {
-	return file_proto_hub_v1_fleet_proto_rawDescGZIP(), []int{15}
+	return file_fleet_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *DeploymentEvent) GetDeploymentId() string {
 	if x != nil {
 		return x.DeploymentId
+	}
+	return ""
+}
+
+func (x *DeploymentEvent) GetConfigId() string {
+	if x != nil {
+		return x.ConfigId
 	}
 	return ""
 }
@@ -1514,7 +1522,7 @@ type DrainEvent struct {
 
 func (x *DrainEvent) Reset() {
 	*x = DrainEvent{}
-	mi := &file_proto_hub_v1_fleet_proto_msgTypes[16]
+	mi := &file_fleet_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1526,7 +1534,7 @@ func (x *DrainEvent) String() string {
 func (*DrainEvent) ProtoMessage() {}
 
 func (x *DrainEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_hub_v1_fleet_proto_msgTypes[16]
+	mi := &file_fleet_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1539,7 +1547,7 @@ func (x *DrainEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DrainEvent.ProtoReflect.Descriptor instead.
 func (*DrainEvent) Descriptor() ([]byte, []int) {
-	return file_proto_hub_v1_fleet_proto_rawDescGZIP(), []int{16}
+	return file_fleet_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *DrainEvent) GetDrainTimeoutSeconds() int32 {
@@ -1566,7 +1574,7 @@ type PingEvent struct {
 
 func (x *PingEvent) Reset() {
 	*x = PingEvent{}
-	mi := &file_proto_hub_v1_fleet_proto_msgTypes[17]
+	mi := &file_fleet_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1578,7 +1586,7 @@ func (x *PingEvent) String() string {
 func (*PingEvent) ProtoMessage() {}
 
 func (x *PingEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_hub_v1_fleet_proto_msgTypes[17]
+	mi := &file_fleet_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1591,7 +1599,7 @@ func (x *PingEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PingEvent.ProtoReflect.Descriptor instead.
 func (*PingEvent) Descriptor() ([]byte, []int) {
-	return file_proto_hub_v1_fleet_proto_rawDescGZIP(), []int{17}
+	return file_fleet_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *PingEvent) GetServerTime() *timestamppb.Timestamp {
@@ -1615,7 +1623,7 @@ type AckDeploymentRequest struct {
 
 func (x *AckDeploymentRequest) Reset() {
 	*x = AckDeploymentRequest{}
-	mi := &file_proto_hub_v1_fleet_proto_msgTypes[18]
+	mi := &file_fleet_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1627,7 +1635,7 @@ func (x *AckDeploymentRequest) String() string {
 func (*AckDeploymentRequest) ProtoMessage() {}
 
 func (x *AckDeploymentRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_hub_v1_fleet_proto_msgTypes[18]
+	mi := &file_fleet_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1640,7 +1648,7 @@ func (x *AckDeploymentRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AckDeploymentRequest.ProtoReflect.Descriptor instead.
 func (*AckDeploymentRequest) Descriptor() ([]byte, []int) {
-	return file_proto_hub_v1_fleet_proto_rawDescGZIP(), []int{18}
+	return file_fleet_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *AckDeploymentRequest) GetInstanceId() string {
@@ -1689,7 +1697,7 @@ type AckDeploymentResponse struct {
 
 func (x *AckDeploymentResponse) Reset() {
 	*x = AckDeploymentResponse{}
-	mi := &file_proto_hub_v1_fleet_proto_msgTypes[19]
+	mi := &file_fleet_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1701,7 +1709,7 @@ func (x *AckDeploymentResponse) String() string {
 func (*AckDeploymentResponse) ProtoMessage() {}
 
 func (x *AckDeploymentResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_hub_v1_fleet_proto_msgTypes[19]
+	mi := &file_fleet_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1714,7 +1722,7 @@ func (x *AckDeploymentResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AckDeploymentResponse.ProtoReflect.Descriptor instead.
 func (*AckDeploymentResponse) Descriptor() ([]byte, []int) {
-	return file_proto_hub_v1_fleet_proto_rawDescGZIP(), []int{19}
+	return file_fleet_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *AckDeploymentResponse) GetAcknowledged() bool {
@@ -1746,7 +1754,7 @@ type DeploymentStatusRequest struct {
 
 func (x *DeploymentStatusRequest) Reset() {
 	*x = DeploymentStatusRequest{}
-	mi := &file_proto_hub_v1_fleet_proto_msgTypes[20]
+	mi := &file_fleet_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1758,7 +1766,7 @@ func (x *DeploymentStatusRequest) String() string {
 func (*DeploymentStatusRequest) ProtoMessage() {}
 
 func (x *DeploymentStatusRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_hub_v1_fleet_proto_msgTypes[20]
+	mi := &file_fleet_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1771,7 +1779,7 @@ func (x *DeploymentStatusRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeploymentStatusRequest.ProtoReflect.Descriptor instead.
 func (*DeploymentStatusRequest) Descriptor() ([]byte, []int) {
-	return file_proto_hub_v1_fleet_proto_rawDescGZIP(), []int{20}
+	return file_fleet_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *DeploymentStatusRequest) GetInstanceId() string {
@@ -1827,7 +1835,7 @@ type DeploymentStatusResponse struct {
 
 func (x *DeploymentStatusResponse) Reset() {
 	*x = DeploymentStatusResponse{}
-	mi := &file_proto_hub_v1_fleet_proto_msgTypes[21]
+	mi := &file_fleet_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1839,7 +1847,7 @@ func (x *DeploymentStatusResponse) String() string {
 func (*DeploymentStatusResponse) ProtoMessage() {}
 
 func (x *DeploymentStatusResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_hub_v1_fleet_proto_msgTypes[21]
+	mi := &file_fleet_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1852,7 +1860,7 @@ func (x *DeploymentStatusResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeploymentStatusResponse.ProtoReflect.Descriptor instead.
 func (*DeploymentStatusResponse) Descriptor() ([]byte, []int) {
-	return file_proto_hub_v1_fleet_proto_rawDescGZIP(), []int{21}
+	return file_fleet_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *DeploymentStatusResponse) GetAcknowledged() bool {
@@ -1880,7 +1888,7 @@ type PendingAction struct {
 
 func (x *PendingAction) Reset() {
 	*x = PendingAction{}
-	mi := &file_proto_hub_v1_fleet_proto_msgTypes[22]
+	mi := &file_fleet_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1892,7 +1900,7 @@ func (x *PendingAction) String() string {
 func (*PendingAction) ProtoMessage() {}
 
 func (x *PendingAction) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_hub_v1_fleet_proto_msgTypes[22]
+	mi := &file_fleet_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1905,7 +1913,7 @@ func (x *PendingAction) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PendingAction.ProtoReflect.Descriptor instead.
 func (*PendingAction) Descriptor() ([]byte, []int) {
-	return file_proto_hub_v1_fleet_proto_rawDescGZIP(), []int{22}
+	return file_fleet_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *PendingAction) GetType() ActionType {
@@ -1929,11 +1937,11 @@ func (x *PendingAction) GetParams() map[string]string {
 	return nil
 }
 
-var File_proto_hub_v1_fleet_proto protoreflect.FileDescriptor
+var File_fleet_proto protoreflect.FileDescriptor
 
-const file_proto_hub_v1_fleet_proto_rawDesc = "" +
+const file_fleet_proto_rawDesc = "" +
 	"\n" +
-	"\x18proto/hub/v1/fleet.proto\x12\x0fsentinel.hub.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xe8\x02\n" +
+	"\vfleet.proto\x12\x0fsentinel.hub.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xe8\x02\n" +
 	"\x0fRegisterRequest\x12\x1f\n" +
 	"\vinstance_id\x18\x01 \x01(\tR\n" +
 	"instanceId\x12#\n" +
@@ -2028,16 +2036,17 @@ const file_proto_hub_v1_fleet_proto_rawDesc = "" +
 	"\x0econfig_version\x18\x01 \x01(\tR\rconfigVersion\x12\x1f\n" +
 	"\vconfig_hash\x18\x02 \x01(\tR\n" +
 	"configHash\x12%\n" +
-	"\x0echange_summary\x18\x03 \x01(\tR\rchangeSummary\"\xbf\x02\n" +
+	"\x0echange_summary\x18\x03 \x01(\tR\rchangeSummary\"\xdc\x02\n" +
 	"\x0fDeploymentEvent\x12#\n" +
-	"\rdeployment_id\x18\x01 \x01(\tR\fdeploymentId\x12%\n" +
-	"\x0econfig_version\x18\x02 \x01(\tR\rconfigVersion\x12?\n" +
-	"\bstrategy\x18\x03 \x01(\x0e2#.sentinel.hub.v1.DeploymentStrategyR\bstrategy\x12%\n" +
-	"\x0ebatch_position\x18\x04 \x01(\x05R\rbatchPosition\x12\x1f\n" +
-	"\vbatch_total\x18\x05 \x01(\x05R\n" +
+	"\rdeployment_id\x18\x01 \x01(\tR\fdeploymentId\x12\x1b\n" +
+	"\tconfig_id\x18\x02 \x01(\tR\bconfigId\x12%\n" +
+	"\x0econfig_version\x18\x03 \x01(\tR\rconfigVersion\x12?\n" +
+	"\bstrategy\x18\x04 \x01(\x0e2#.sentinel.hub.v1.DeploymentStrategyR\bstrategy\x12%\n" +
+	"\x0ebatch_position\x18\x05 \x01(\x05R\rbatchPosition\x12\x1f\n" +
+	"\vbatch_total\x18\x06 \x01(\x05R\n" +
 	"batchTotal\x126\n" +
-	"\bdeadline\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\bdeadline\x12\x1f\n" +
-	"\vis_rollback\x18\a \x01(\bR\n" +
+	"\bdeadline\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\bdeadline\x12\x1f\n" +
+	"\vis_rollback\x18\b \x01(\bR\n" +
 	"isRollback\"X\n" +
 	"\n" +
 	"DrainEvent\x122\n" +
@@ -2118,20 +2127,20 @@ const file_proto_hub_v1_fleet_proto_rawDesc = "" +
 	"\x16ReportDeploymentStatus\x12(.sentinel.hub.v1.DeploymentStatusRequest\x1a).sentinel.hub.v1.DeploymentStatusResponseB.Z,github.com/raskell-io/sentinel-hub/pkg/hubpbb\x06proto3"
 
 var (
-	file_proto_hub_v1_fleet_proto_rawDescOnce sync.Once
-	file_proto_hub_v1_fleet_proto_rawDescData []byte
+	file_fleet_proto_rawDescOnce sync.Once
+	file_fleet_proto_rawDescData []byte
 )
 
-func file_proto_hub_v1_fleet_proto_rawDescGZIP() []byte {
-	file_proto_hub_v1_fleet_proto_rawDescOnce.Do(func() {
-		file_proto_hub_v1_fleet_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_proto_hub_v1_fleet_proto_rawDesc), len(file_proto_hub_v1_fleet_proto_rawDesc)))
+func file_fleet_proto_rawDescGZIP() []byte {
+	file_fleet_proto_rawDescOnce.Do(func() {
+		file_fleet_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_fleet_proto_rawDesc), len(file_fleet_proto_rawDesc)))
 	})
-	return file_proto_hub_v1_fleet_proto_rawDescData
+	return file_fleet_proto_rawDescData
 }
 
-var file_proto_hub_v1_fleet_proto_enumTypes = make([]protoimpl.EnumInfo, 5)
-var file_proto_hub_v1_fleet_proto_msgTypes = make([]protoimpl.MessageInfo, 25)
-var file_proto_hub_v1_fleet_proto_goTypes = []any{
+var file_fleet_proto_enumTypes = make([]protoimpl.EnumInfo, 5)
+var file_fleet_proto_msgTypes = make([]protoimpl.MessageInfo, 25)
+var file_fleet_proto_goTypes = []any{
 	(InstanceState)(0),               // 0: sentinel.hub.v1.InstanceState
 	(EventType)(0),                   // 1: sentinel.hub.v1.EventType
 	(DeploymentStrategy)(0),          // 2: sentinel.hub.v1.DeploymentStrategy
@@ -2164,7 +2173,7 @@ var file_proto_hub_v1_fleet_proto_goTypes = []any{
 	nil,                              // 29: sentinel.hub.v1.PendingAction.ParamsEntry
 	(*timestamppb.Timestamp)(nil),    // 30: google.protobuf.Timestamp
 }
-var file_proto_hub_v1_fleet_proto_depIdxs = []int32{
+var file_fleet_proto_depIdxs = []int32{
 	28, // 0: sentinel.hub.v1.RegisterRequest.labels:type_name -> sentinel.hub.v1.RegisterRequest.LabelsEntry
 	11, // 1: sentinel.hub.v1.HeartbeatRequest.status:type_name -> sentinel.hub.v1.InstanceStatus
 	12, // 2: sentinel.hub.v1.HeartbeatRequest.metrics:type_name -> sentinel.hub.v1.InstanceMetrics
@@ -2207,12 +2216,12 @@ var file_proto_hub_v1_fleet_proto_depIdxs = []int32{
 	0,  // [0:19] is the sub-list for field type_name
 }
 
-func init() { file_proto_hub_v1_fleet_proto_init() }
-func file_proto_hub_v1_fleet_proto_init() {
-	if File_proto_hub_v1_fleet_proto != nil {
+func init() { file_fleet_proto_init() }
+func file_fleet_proto_init() {
+	if File_fleet_proto != nil {
 		return
 	}
-	file_proto_hub_v1_fleet_proto_msgTypes[13].OneofWrappers = []any{
+	file_fleet_proto_msgTypes[13].OneofWrappers = []any{
 		(*Event_ConfigUpdate)(nil),
 		(*Event_Deployment)(nil),
 		(*Event_Drain)(nil),
@@ -2222,18 +2231,18 @@ func file_proto_hub_v1_fleet_proto_init() {
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
-			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_hub_v1_fleet_proto_rawDesc), len(file_proto_hub_v1_fleet_proto_rawDesc)),
+			RawDescriptor: unsafe.Slice(unsafe.StringData(file_fleet_proto_rawDesc), len(file_fleet_proto_rawDesc)),
 			NumEnums:      5,
 			NumMessages:   25,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
-		GoTypes:           file_proto_hub_v1_fleet_proto_goTypes,
-		DependencyIndexes: file_proto_hub_v1_fleet_proto_depIdxs,
-		EnumInfos:         file_proto_hub_v1_fleet_proto_enumTypes,
-		MessageInfos:      file_proto_hub_v1_fleet_proto_msgTypes,
+		GoTypes:           file_fleet_proto_goTypes,
+		DependencyIndexes: file_fleet_proto_depIdxs,
+		EnumInfos:         file_fleet_proto_enumTypes,
+		MessageInfos:      file_fleet_proto_msgTypes,
 	}.Build()
-	File_proto_hub_v1_fleet_proto = out.File
-	file_proto_hub_v1_fleet_proto_goTypes = nil
-	file_proto_hub_v1_fleet_proto_depIdxs = nil
+	File_fleet_proto = out.File
+	file_fleet_proto_goTypes = nil
+	file_fleet_proto_depIdxs = nil
 }

@@ -425,14 +425,18 @@ func (s *FleetService) Subscribe(req *pb.SubscribeRequest, stream pb.FleetServic
 	pingTicker := time.NewTicker(30 * time.Second)
 	defer pingTicker.Stop()
 
+	log.Debug().Str("instance_id", req.InstanceId).Msg("Subscribe entering event loop")
+
 	for {
 		select {
 		case <-stream.Context().Done():
+			log.Debug().Str("instance_id", req.InstanceId).Err(stream.Context().Err()).Msg("Subscribe context done")
 			return stream.Context().Err()
 
 		case event, ok := <-eventCh:
 			if !ok {
 				// Channel closed, subscriber removed
+				log.Debug().Str("instance_id", req.InstanceId).Msg("Subscribe channel closed")
 				return nil
 			}
 			if err := stream.Send(event); err != nil {
@@ -595,7 +599,7 @@ func (s *FleetService) NotifyConfigUpdate(instanceIDs []string, configVersion, c
 }
 
 // NotifyDeployment sends a deployment event to specified instances.
-func (s *FleetService) NotifyDeployment(instanceID, deploymentID, configVersion string, strategy pb.DeploymentStrategy, batchPos, batchTotal int, deadline time.Time, isRollback bool) error {
+func (s *FleetService) NotifyDeployment(instanceID, deploymentID, configID, configVersion string, strategy pb.DeploymentStrategy, batchPos, batchTotal int, deadline time.Time, isRollback bool) error {
 	event := &pb.Event{
 		EventId:   uuid.New().String(),
 		Type:      pb.EventType_EVENT_TYPE_DEPLOYMENT,
@@ -603,6 +607,7 @@ func (s *FleetService) NotifyDeployment(instanceID, deploymentID, configVersion 
 		Payload: &pb.Event_Deployment{
 			Deployment: &pb.DeploymentEvent{
 				DeploymentId:  deploymentID,
+				ConfigId:      configID,
 				ConfigVersion: configVersion,
 				Strategy:      strategy,
 				BatchPosition: int32(batchPos),

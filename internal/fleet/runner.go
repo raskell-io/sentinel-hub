@@ -394,6 +394,7 @@ func (r *DeploymentRunner) deployToInstance(ctx context.Context, instanceID stri
 	err := r.fleetService.NotifyDeployment(
 		instanceID,
 		r.deployment.ID,
+		r.deployment.ConfigID,
 		fmt.Sprintf("%d", r.configVersion.Version),
 		strategy,
 		batchNum,
@@ -604,6 +605,7 @@ func (r *DeploymentRunner) rollbackDeployedInstances(ctx context.Context) {
 		err := r.fleetService.NotifyDeployment(
 			instanceID,
 			r.deployment.ID+"-rollback",
+			r.deployment.ConfigID,
 			fmt.Sprintf("%d", prevVersion),
 			pb.DeploymentStrategy_DEPLOYMENT_STRATEGY_ALL_AT_ONCE,
 			1, 1,
