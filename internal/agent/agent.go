@@ -14,6 +14,7 @@ import (
 type Agent struct {
 	client   *Client
 	sentinel *SentinelManager
+	state    *StateManager
 
 	// Configuration
 	heartbeatInterval time.Duration
@@ -32,6 +33,7 @@ type Config struct {
 	InstanceID        string
 	InstanceName      string
 	SentinelConfig    string
+	StatePath         string // Path to agent state file
 	HeartbeatInterval time.Duration
 	AgentVersion      string
 	SentinelVersion   string
@@ -42,8 +44,30 @@ type Config struct {
 func New(cfg Config) (*Agent, error) {
 	sentinel := NewSentinelManager(cfg.SentinelConfig)
 
+	// Initialize state manager
+	statePath := cfg.StatePath
+	if statePath == "" {
+		statePath = "/var/lib/sentinel-agent/state.json"
+	}
+	stateManager := NewStateManager(statePath)
+
+	// Load existing state
+	state, err := stateManager.Load()
+	if err != nil {
+		return nil, fmt.Errorf("failed to load agent state: %w", err)
+	}
+
+	// Determine instance ID: config > state > generate new
+	instanceID := cfg.InstanceID
+	if instanceID == "" && state.InstanceID != "" {
+		instanceID = state.InstanceID
+		log.Info().Str("instance_id", instanceID).Msg("Using instance ID from persisted state")
+	}
+	// If still empty, NewClient will generate one and we'll save it
+
 	agent := &Agent{
 		sentinel:          sentinel,
+		state:             stateManager,
 		heartbeatInterval: cfg.HeartbeatInterval,
 		stopCh:            make(chan struct{}),
 	}
@@ -51,7 +75,7 @@ func New(cfg Config) (*Agent, error) {
 	// Create client with agent as event handler
 	client, err := NewClient(ClientConfig{
 		HubURL:          cfg.HubURL,
-		InstanceID:      cfg.InstanceID,
+		InstanceID:      instanceID,
 		InstanceName:    cfg.InstanceName,
 		AgentVersion:    cfg.AgentVersion,
 		SentinelVersion: cfg.SentinelVersion,
@@ -65,8 +89,20 @@ func New(cfg Config) (*Agent, error) {
 
 	agent.client = client
 
-	// Read current config if exists
-	if content, err := sentinel.ReadCurrentConfig(); err == nil && content != "" {
+	// Persist instance ID if it was generated
+	if state.InstanceID == "" {
+		if err := stateManager.SetInstanceID(client.InstanceID()); err != nil {
+			log.Warn().Err(err).Msg("Failed to persist instance ID")
+		}
+	}
+
+	// Restore config state from persisted state or read from disk
+	if state.ConfigVersion != "" {
+		client.UpdateConfigState(state.ConfigVersion, state.ConfigHash)
+		log.Info().
+			Str("version", state.ConfigVersion).
+			Msg("Restored config state from persisted state")
+	} else if content, err := sentinel.ReadCurrentConfig(); err == nil && content != "" {
 		client.SetConfigFromContent("unknown", content)
 	}
 
@@ -86,6 +122,15 @@ func (a *Agent) Run(ctx context.Context) error {
 	}()
 
 	log.Info().Msg("Starting agent...")
+
+	// Check for interrupted deployment from previous run
+	if a.state != nil {
+		if deploymentID := a.state.GetActiveDeployment(); deploymentID != "" {
+			log.Warn().
+				Str("deployment_id", deploymentID).
+				Msg("Found interrupted deployment from previous run, will report failure after connecting")
+		}
+	}
 
 	// Main loop with reconnection
 	backoff := time.Second
@@ -131,6 +176,9 @@ func (a *Agent) Run(ctx context.Context) error {
 
 		// Reset backoff on successful connection
 		backoff = time.Second
+
+		// Report any interrupted deployment from previous run
+		a.reportInterruptedDeployment(ctx)
 
 		// Run the main agent loop
 		if err := a.runLoop(ctx); err != nil {
@@ -315,6 +363,13 @@ func (a *Agent) OnConfigUpdate(version, hash, content string) error {
 	// Update client state
 	a.client.UpdateConfigState(version, hash)
 
+	// Persist config state to disk
+	if a.state != nil {
+		if err := a.state.SetConfigState(version, hash, ""); err != nil {
+			log.Warn().Err(err).Msg("Failed to persist config state")
+		}
+	}
+
 	log.Info().Str("version", version).Msg("Config update applied successfully")
 	return nil
 }
@@ -328,6 +383,13 @@ func (a *Agent) OnDeployment(deploymentID, configID, configVersion string, isRol
 		Bool("rollback", isRollback).
 		Msg("Processing deployment...")
 
+	// Track active deployment for crash recovery
+	if a.state != nil {
+		if err := a.state.SetActiveDeployment(deploymentID); err != nil {
+			log.Warn().Err(err).Msg("Failed to persist active deployment")
+		}
+	}
+
 	// Parse version number
 	var versionNum int
 	fmt.Sscanf(configVersion, "%d", &versionNum)
@@ -335,17 +397,29 @@ func (a *Agent) OnDeployment(deploymentID, configID, configVersion string, isRol
 	// Fetch the config for this deployment using config_id
 	cfg, err := a.client.FetchConfigVersion(context.Background(), configID, versionNum)
 	if err != nil {
+		a.clearActiveDeployment()
 		return err
 	}
 
-	// Apply the config
+	// Apply the config (this also persists config state)
 	if err := a.OnConfigUpdate(fmt.Sprintf("%d", cfg.VersionNumber), cfg.Hash, cfg.Content); err != nil {
+		a.clearActiveDeployment()
 		// If this was a rollback and it failed, we're in trouble
 		if isRollback {
 			log.Error().Err(err).Msg("Rollback failed!")
 		}
 		return err
 	}
+
+	// Also persist the config ID for better tracking
+	if a.state != nil {
+		if err := a.state.SetConfigState(fmt.Sprintf("%d", cfg.VersionNumber), cfg.Hash, configID); err != nil {
+			log.Warn().Err(err).Msg("Failed to persist config state with config ID")
+		}
+	}
+
+	// Clear active deployment on success
+	a.clearActiveDeployment()
 
 	log.Info().
 		Str("deployment_id", deploymentID).
@@ -386,4 +460,59 @@ func (a *Agent) Client() *Client {
 // Sentinel returns the Sentinel manager.
 func (a *Agent) Sentinel() *SentinelManager {
 	return a.sentinel
+}
+
+// State returns the state manager.
+func (a *Agent) State() *StateManager {
+	return a.state
+}
+
+// reportInterruptedDeployment reports any deployment that was interrupted
+// by a previous agent crash/restart.
+func (a *Agent) reportInterruptedDeployment(ctx context.Context) {
+	if a.state == nil {
+		return
+	}
+
+	deploymentID := a.state.GetActiveDeployment()
+	if deploymentID == "" {
+		return
+	}
+
+	log.Warn().
+		Str("deployment_id", deploymentID).
+		Msg("Reporting interrupted deployment as failed")
+
+	err := a.client.ReportDeploymentStatus(
+		ctx,
+		deploymentID,
+		pb.DeploymentState_DEPLOYMENT_STATE_FAILED,
+		"Deployment interrupted by agent restart",
+		"agent_restart: deployment was in progress when agent restarted",
+	)
+	if err != nil {
+		log.Error().Err(err).
+			Str("deployment_id", deploymentID).
+			Msg("Failed to report interrupted deployment")
+		return
+	}
+
+	// Clear the active deployment after reporting
+	if err := a.state.ClearActiveDeployment(); err != nil {
+		log.Warn().Err(err).Msg("Failed to clear active deployment after reporting")
+	}
+
+	log.Info().
+		Str("deployment_id", deploymentID).
+		Msg("Successfully reported interrupted deployment as failed")
+}
+
+// clearActiveDeployment clears the active deployment from state.
+func (a *Agent) clearActiveDeployment() {
+	if a.state == nil {
+		return
+	}
+	if err := a.state.ClearActiveDeployment(); err != nil {
+		log.Warn().Err(err).Msg("Failed to clear active deployment")
+	}
 }
