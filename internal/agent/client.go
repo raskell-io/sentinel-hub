@@ -3,6 +3,8 @@ package agent
 import (
 	"context"
 	"crypto/sha256"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/hex"
 	"fmt"
 	"io"
@@ -11,10 +13,12 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/raskell-io/sentinel-hub/internal/config"
 	pb "github.com/raskell-io/sentinel-hub/pkg/hubpb"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
 )
@@ -30,6 +34,10 @@ type Client struct {
 	sentinelVersion string
 	labels          map[string]string
 	capabilities    []string
+
+	// TLS configuration
+	tlsConfig *config.TLSConfig
+	tlsCreds  credentials.TransportCredentials
 
 	// Connection state
 	conn   *grpc.ClientConn
@@ -67,6 +75,7 @@ type ClientConfig struct {
 	Labels          map[string]string
 	Capabilities    []string
 	EventHandler    EventHandler
+	TLS             *config.TLSConfig
 }
 
 // NewClient creates a new Hub client.
@@ -81,7 +90,7 @@ func NewClient(cfg ClientConfig) (*Client, error) {
 		instanceID = uuid.New().String()
 	}
 
-	return &Client{
+	client := &Client{
 		hubURL:              cfg.HubURL,
 		instanceID:          instanceID,
 		instanceName:        cfg.InstanceName,
@@ -91,9 +100,67 @@ func NewClient(cfg ClientConfig) (*Client, error) {
 		labels:              cfg.Labels,
 		capabilities:        cfg.Capabilities,
 		eventHandler:        cfg.EventHandler,
+		tlsConfig:           cfg.TLS,
 		reconnectBackoff:    time.Second,
 		maxReconnectBackoff: 5 * time.Minute,
-	}, nil
+	}
+
+	// Initialize TLS credentials if configured
+	if cfg.TLS != nil && cfg.TLS.Enabled {
+		creds, err := loadClientTLSCredentials(cfg.TLS)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load TLS credentials: %w", err)
+		}
+		client.tlsCreds = creds
+		log.Info().
+			Str("cert_file", cfg.TLS.CertFile).
+			Bool("mtls", cfg.TLS.CertFile != "" && cfg.TLS.KeyFile != "").
+			Msg("TLS credentials loaded for Hub client")
+	}
+
+	return client, nil
+}
+
+// loadClientTLSCredentials loads TLS credentials for the client.
+func loadClientTLSCredentials(cfg *config.TLSConfig) (credentials.TransportCredentials, error) {
+	tlsConfig := &tls.Config{
+		MinVersion: tls.VersionTLS12,
+	}
+
+	// Parse min version
+	switch cfg.MinVersion {
+	case "1.3", "TLS1.3":
+		tlsConfig.MinVersion = tls.VersionTLS13
+	case "1.2", "TLS1.2":
+		tlsConfig.MinVersion = tls.VersionTLS12
+	}
+
+	// Load CA certificate for server verification
+	if cfg.CAFile != "" {
+		caData, err := os.ReadFile(cfg.CAFile)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read CA file: %w", err)
+		}
+		caPool := x509.NewCertPool()
+		if !caPool.AppendCertsFromPEM(caData) {
+			return nil, fmt.Errorf("failed to parse CA certificates")
+		}
+		tlsConfig.RootCAs = caPool
+	}
+
+	// Load client certificate for mTLS (SPIFFE SVID)
+	if cfg.CertFile != "" && cfg.KeyFile != "" {
+		cert, err := tls.LoadX509KeyPair(cfg.CertFile, cfg.KeyFile)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load client certificate: %w", err)
+		}
+		tlsConfig.Certificates = []tls.Certificate{cert}
+		log.Debug().
+			Str("cert_file", cfg.CertFile).
+			Msg("Client certificate loaded for mTLS")
+	}
+
+	return credentials.NewTLS(tlsConfig), nil
 }
 
 // Connect establishes a connection to the Hub.
@@ -107,10 +174,19 @@ func (c *Client) Connect(ctx context.Context) error {
 
 	log.Info().Str("hub_url", c.hubURL).Msg("Connecting to Hub...")
 
-	// TODO: Add TLS support
+	// Use TLS credentials if configured, otherwise use insecure
+	var creds credentials.TransportCredentials
+	if c.tlsCreds != nil {
+		creds = c.tlsCreds
+		log.Debug().Msg("Using TLS credentials for Hub connection")
+	} else {
+		creds = insecure.NewCredentials()
+		log.Warn().Msg("Using insecure connection to Hub (TLS not configured)")
+	}
+
 	conn, err := grpc.NewClient(
 		c.hubURL,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithTransportCredentials(creds),
 	)
 	if err != nil {
 		return fmt.Errorf("failed to connect: %w", err)
@@ -119,7 +195,10 @@ func (c *Client) Connect(ctx context.Context) error {
 	c.conn = conn
 	c.client = pb.NewFleetServiceClient(conn)
 
-	log.Info().Str("hub_url", c.hubURL).Msg("Connected to Hub")
+	log.Info().
+		Str("hub_url", c.hubURL).
+		Bool("tls_enabled", c.tlsCreds != nil).
+		Msg("Connected to Hub")
 	return nil
 }
 
